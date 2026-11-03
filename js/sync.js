@@ -169,6 +169,9 @@
     allow: (email, name) => api('/rest/v1/allowed_emails', { method: 'POST', body: { email: email.trim().toLowerCase(), role: 'learner', display_name: name || null }, headers: { Prefer: 'return=minimal' } }),
     profiles: () => api('/rest/v1/profiles?select=email,display_name,role,created_at&order=created_at'),
     reports: () => api('/rest/v1/task_reports?select=id,task_id,task_version,text,status,admin_note,created_at,user_id&order=created_at.desc'),
+    users: () => aiCall('admin-users', { action: 'list' }),
+    deleteUser: (id, revoke) => aiCall('admin-users', { action: 'delete', id, revoke }),
+    revoke: email => aiCall('admin-users', { action: 'revoke', email }),
     setReport: (id, status, note) => api('/rest/v1/task_reports?id=eq.' + id, { method: 'PATCH', body: { status, admin_note: note || null }, headers: { Prefer: 'return=minimal' } })
   };
 

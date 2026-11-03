@@ -170,7 +170,7 @@ a.row:hover{background:var(--surface3)}
 .meter.empty .lcd{min-height:120px}
 
 /* Schnellstart-Kacheln */
-.starts{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px;margin-bottom:18px}
+.starts{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;margin-bottom:18px}
 .start{display:flex;flex-direction:column;justify-content:space-between;gap:28px;padding:18px 20px;border-radius:var(--r-xl);background:var(--surface);border:1px solid var(--line);color:var(--ink);box-shadow:var(--shadow);transition:transform .15s var(--ease),box-shadow .2s;min-height:132px}
 .start:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift)}
 .start:active{transform:scale(.98)}
@@ -418,7 +418,7 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
   body.sym-on .tutor-panel{height:calc(80dvh - var(--symh,0px))}
   .meter{grid-template-columns:1fr;padding:14px;gap:16px;border-radius:22px}
   .lcd{min-height:140px} .lcd-num{font-size:76px}
-  .starts{grid-template-columns:1fr 1fr} .start.main{grid-column:1/-1;min-height:112px}
+  .starts{grid-template-columns:1fr 1fr 1fr;gap:10px} .start.main{grid-column:1/-1;min-height:112px} .starts .start:not(.main){padding:13px 12px;gap:12px;min-height:0} .starts .start:not(.main) b{font-size:15px} .starts .start:not(.main) span{font-size:12px;line-height:1.3}
   .start{min-height:116px;gap:18px;padding:16px}
   .kpis{grid-template-columns:1fr 1fr} .kpi:nth-child(3){border-left:0} .kpi:nth-child(n+3){border-top:1px solid var(--line)}
   .home-h h1{font-size:32px}
@@ -465,3 +465,8 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .go-bar .btn{width:100%}
 @media (max-width:600px){.go-bar{margin:18px -18px -18px;padding:12px 18px}}
 .sess-top .sess-del{order:9;margin-left:auto;color:var(--muted);min-height:40px;width:42px;justify-content:center;border-radius:99px}.sess-top .sess-del:hover{color:var(--bad);background:var(--badBg)}
+
+/* Merken */
+.mark-ib.on{background:var(--accentSoft);color:var(--ink)} .mark-ib.on .ic{fill:var(--accent);stroke:var(--accent)}
+.mark-chip{margin-bottom:10px} .mark-chip.on{background:var(--accentSoft);border-color:var(--accent);color:var(--ink)} .mark-chip.on .ic{fill:var(--accent);stroke:var(--accent)}
+.res.mk{color:var(--warn);font-weight:600}

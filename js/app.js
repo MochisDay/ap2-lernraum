@@ -35,7 +35,20 @@
     });
   }
   window.AP2Ask = ask;
-  const APPV = 26;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  let SWREG = null;
+  const APPV = 28;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
+  const isMarked = id => !!(st.marked && st.marked[id]);
+  function toggleMark(id) {
+    st.marked = st.marked || {};
+    if (st.marked[id]) delete st.marked[id]; else st.marked[id] = Date.now();
+    S.save(true);
+    const on = isMarked(id);
+    $$(`[data-mark="${id}"]`).forEach(b => { b.classList.toggle('on', on); const sp = $('span', b); if (sp) sp.textContent = b.dataset.long ? (on ? 'Gemerkt fürs Fehlerheft' : 'Geraten? Merken') : (on ? 'Gemerkt' : 'Merken'); });
+    AP2Toast(on ? 'Gemerkt – die Aufgabe ist jetzt im Fehlerheft.' : 'Markierung entfernt.');
+    if (!on && ROUTE === '#/mistakes') $$(`.resume [data-mark="${id}"]`).forEach(b => b.closest('.resume').remove());
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-mark]'); if (b) { e.preventDefault(); toggleMark(b.dataset.mark); } });
   document.addEventListener('click', async e => {
     const d = e.target.closest('[data-sdel]'); if (!d) return;
     if (!(await ask({ title: 'Dieses Training löschen?', text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
@@ -98,7 +111,7 @@
       // Updates sofort übernehmen: neue Version laden, sobald der neue Service Worker übernimmt (auch in der installierten iPad-App)
       const hadCtl = !!navigator.serviceWorker.controller; let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl || reloading) return; reloading = true; try { S.save(true); } catch (_) {} location.reload(); });
-      navigator.serviceWorker.register('sw.js').then(reg => {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => { SWREG = reg;
         const check = () => reg.update().catch(() => {});
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
         setInterval(check, 30 * 60e3);
@@ -127,7 +140,7 @@
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (name || 'home')));
     document.body.classList.toggle('focus', ['exam', 'review', 'session', 'duel', 'bexam', 'bcorr'].includes(name));
     const m = $('#main');
-    const views = { '': home, home, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
+    const views = { '': home, home, mistakes, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
     (views[name] || home)(m, rest.map(decodeURIComponent));
     hydrate(m);
     m.scrollTop = 0; m.focus({ preventScroll: true });
@@ -150,6 +163,7 @@
       ${planCard()}
       <nav class="starts">
         <a class="start main" href="#/training">${ic('bolt')}<div><b>Schnelltraining</b><span>Schwächen, Neues und Wiederholungen gemischt</span></div></a>
+        <a class="start" href="#/mistakes">${ic('repeat')}<div><b>Fehlerheft</b><span>${(() => { const n = mistakeLists().open.length; return n ? n + (n === 1 ? ' Aufgabe' : ' Aufgaben') + ' zum Wiederholen' : 'Noch keine Fehler'; })()}</span></div></a>
         <a class="start" href="#/exams">${ic('timer')}<div><b>Originalprüfung</b><span>Ganze Prüfung mit Zeit</span></div></a>
         <a class="start" href="#/duels">${ic('duel')}<div><b>Duell</b><span>Gleiche Aufgaben, wer ist besser?</span></div></a>
       </nav>
@@ -162,7 +176,7 @@
       <div class="grid2">
         <section class="card"><h2>Weitermachen</h2>${open.length || exOpen.length || bOpen.length ? '' : '<p class="muted">Keine offenen Sitzungen.</p>'}
           ${bOpen.map(e => `<div class="resume"><a class="row" href="#/${e.submitted ? 'bresult' : 'bexam'}/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.submitted ? 'Korrektur offen' : e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${bProgress(e)}</span></a><button class="ib del" data-del="b:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
-          ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
+          ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.mistakes ? 'Fehlerheft' : s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
           ${exOpen.map(e => `<div class="resume"><a class="row" href="#/exam/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${Object.keys(e.answers).length}/${e.taskIds.length} beantwortet</span></a><button class="ib del" data-del="e:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
         </section>
         <section class="card"><h2>Stärken &amp; Schwächen</h2>${partBars()}</section>
@@ -179,6 +193,8 @@
       const row = b.closest('.resume'), card = row.parentElement; row.style.transition = 'opacity .2s'; row.style.opacity = '0';
       setTimeout(() => { row.remove(); if (!card.querySelector('.resume')) card.insertAdjacentHTML('beforeend', '<p class="muted">Keine offenen Sitzungen.</p>'); }, 200);
     });
+    { const P = planInfo(), d = new Date().toLocaleDateString('sv-SE');   // Tagesziel für die Abend-Erinnerung mitschicken
+      if (P && P.phase !== 'done' && (!st.planToday || st.planToday.d !== d || st.planToday.goal !== P.goal)) { st.planToday = { d, goal: P.goal }; S.save(); } }
     const pb = $('#planGo'); if (pb) pb.onclick = () => go('#/training');
     const pw = $('#planWeak'); if (pw) pw.onclick = () => { const P = planInfo(); if (P && P.weak) topicTraining(P.weak); };
   }
@@ -287,7 +303,7 @@
     return `<div class="work" id="work">
       <section class="orig"><div class="orig-bar"><span class="tag">${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${esc(t.label)}${t.mandatory ? ' · <b>nicht abwählbar</b>' : ''}</span>
         <div class="tools"><button class="ib" data-z="-">−</button><button class="ib" data-z="0">Breite</button><button class="ib" data-z="+">+</button>
-        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen"><svg class="ic"><use href="#i-spark"/></svg> Tutor</button>' : ''}<button class="ib" id="pinBook" title="Heftseiten anheften"><svg class="ic"><use href="#i-clip"/></svg> Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden"><svg class="ic"><use href="#i-flag"/></svg> </button>'}</div></div>
+        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen"><svg class="ic"><use href="#i-spark"/></svg> Tutor</button>' : ''}<button class="ib mark-ib ${isMarked(t.id) ? 'on' : ''}" data-mark="${t.id}" title="Aufgabe fürs Fehlerheft merken"><svg class="ic"><use href="#i-star"/></svg> <span>${isMarked(t.id) ? 'Gemerkt' : 'Merken'}</span></button><button class="ib" id="pinBook" title="Heftseiten anheften"><svg class="ic"><use href="#i-clip"/></svg> Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden"><svg class="ic"><use href="#i-flag"/></svg> </button>'}</div></div>
         <div class="orig-scroll"><img id="origImg" data-src="${t.image}" ${t.imageSize ? `width="${t.imageSize[0]}" height="${t.imageSize[1]}" style="aspect-ratio:${t.imageSize[0]}/${t.imageSize[1]}"` : ""} alt="Originalaufgabe ${esc(t.id)}" draggable="false"></div></section>
       <div class="split" id="split" title="Ziehen zum Ändern der Aufteilung"></div>
       <section class="side">${rightTop}<div class="pad" id="pad"></div></section></div>`;
@@ -330,7 +346,7 @@
       const head = { first: '✓ Richtig!', hint: '✓ Richtig – mit Hinweis.', wrong: '✗ Leider falsch.' }[it.result];
       msg = `<div class="fb ${it.result === 'wrong' ? 'bad' : 'good'}"><b>${head}</b> Offizielle Lösung: <b>${NUM[t.solution.answer - 1]}</b>
         <span class="muted small">Beleg: IHK-Lösungsschablone ${t.solution.template}, Lösungsheft S. ${t.solution.page}</span>
-        <button class="link" id="showKey">Lösungsschablone ansehen</button></div>`;
+        <button class="link" id="showKey">Lösungsschablone ansehen</button></div>${it.result !== 'wrong' ? `<button class="chip mark-chip ${isMarked(t.id) ? 'on' : ''}" data-mark="${t.id}" data-long="1"><svg class="ic"><use href="#i-star"/></svg> <span>${isMarked(t.id) ? 'Gemerkt fürs Fehlerheft' : 'Geraten? Merken'}</span></button>` : ''}`;
     }
     const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
       <span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
@@ -356,13 +372,40 @@
     
     const sk = $('#showKey'); if (sk) sk.onclick = () => openPage(`${t.period}_LOES`, t.solution.page, `Lösung ${t.periodLabel} (${t.solution.template})`);
   }
+  /* ---------- Fehlerheft: falsch oder nur mit Hinweis gelöste Aufgaben, bis sie zweimal in Folge sofort sitzen ---------- */
+  function mistakeLists() {
+    const all = gradable().filter(t => { const e = st.srs[t.id]; return e && (e.wrong + e.hint) > 0; });
+    const open = all.filter(t => st.srs[t.id].box < 2 && !isMarked(t.id)).sort((a, b) => (st.srs[b.id].wrong - st.srs[a.id].wrong) || (st.srs[a.id].last - st.srs[b.id].last));
+    const marked = gradable().filter(t => isMarked(t.id)).sort((a, b) => st.marked[b.id] - st.marked[a.id]);
+    return { open: marked.concat(open), marked, solved: all.filter(t => st.srs[t.id].box >= 2 && !isMarked(t.id)) };
+  }
+  function startMistakes(n) {
+    const { open } = mistakeLists(); if (!open.length) return AP2Toast('Keine offenen Fehler – stark!');
+    const ids = open.slice(0, n || st.settings.sessionSize || 10).map(t => t.id);
+    const id = 's' + Date.now().toString(36);
+    st.sessions[id] = { id, items: ids.map(t => ({ id: t, tries: [], result: null })), idx: 0, created: Date.now(), updated: Date.now(), done: false, endsAt: 0, mistakes: true };
+    S.save(true); go('#/session/' + id);
+  }
+  function mistakes(m) {
+    const { open, solved, marked } = mistakeLists();
+    const row = t => { const e = st.srs[t.id] || { wrong: 0, box: 0 }; const mk = isMarked(t.id);
+      return `<div class="resume"><a class="row" href="#/task/${t.id}"><b>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${esc(t.label)}</b><span class="muted">${t.topic && REG.topics ? esc(REG.topics[t.topic] || '') : ''}</span><span class="res ${mk ? 'mk' : e.wrong ? 'wrong' : 'hint'}">${mk ? 'gemerkt' : e.wrong ? e.wrong + '× falsch' : 'mit Hinweis'}${!mk && e.box === 1 ? ' · 1× richtig' : ''}</span></a>${mk ? `<button class="ib del" data-mark="${t.id}" title="Markierung entfernen" aria-label="Markierung entfernen"><svg class="ic"><use href="#i-x"/></svg></button>` : ''}</div>`; };
+    const parts = [...new Set(open.map(t => t.part))];
+    m.innerHTML = `<header class="page-h"><h1>Fehlerheft</h1><p>Hier landet jede Aufgabe, die du falsch oder nur mit Hinweis gelöst hast. Erst wenn du sie zweimal hintereinander sofort richtig hast, gilt sie als gelöst und verschwindet. Aufgaben, die du mit dem Stern gemerkt hast (z. B. weil du geraten hast), bleiben drin, bis du die Markierung entfernst.</p></header>
+      <section class="kpis">${kpi('Offen', open.length, marked.length ? `davon ${marked.length} gemerkt` : 'noch zu üben')}${kpi('Gelöst', solved.length, 'zweimal in Folge richtig')}${(() => { const w = open.filter(t => st.srs[t.id] && st.srs[t.id].wrong).sort((a, b) => st.srs[b.id].wrong - st.srs[a.id].wrong)[0]; return kpi('Schwerste', w ? st.srs[w.id].wrong + '×' : '–', w ? 'falsch: ' + esc(w.periodLabel + ' · ' + w.label) : 'keine'); })()}</section>
+      ${open.length ? `<section class="card"><div class="actions wrap" style="margin-top:0"><button class="btn primary lg" id="mGo">${ic('repeat')} ${Math.min(open.length, st.settings.sessionSize || 10)} Fehler üben</button>${open.length > 10 ? `<button class="btn lg" id="mAll">Alle ${open.length}</button>` : ''}</div></section>
+        ${parts.map(p => `<section class="card"><h2>${PART_SHORT[p]} <span class="muted small">${open.filter(t => t.part === p).length}</span></h2>${open.filter(t => t.part === p).map(row).join('')}</section>`).join('')}`
+      : `<section class="card"><h2>Noch keine offenen Fehler</h2><p class="muted">${solved.length ? 'Alles, was du falsch hattest, sitzt inzwischen. Weiter so!' : 'Sobald du im Training etwas falsch beantwortest, landet es hier.'}</p><div class="actions"><a class="btn primary" href="#/training">${ic('bolt')} Training starten</a></div></section>`}`;
+    const g = $('#mGo'); if (g) g.onclick = () => startMistakes();
+    const a = $('#mAll'); if (a) a.onclick = () => startMistakes(open.length);
+  }
   function sessionEnd(m, s) {
     s.done = true; S.save(true);
     const c = { first: 0, hint: 0, wrong: 0, open: 0 }; s.items.forEach(i => c[i.result || 'open']++);
     m.innerHTML = `<header class="page-h"><h1>Training abgeschlossen</h1></header>
       <section class="kpis">${kpi('Sofort richtig', c.first, '')}${kpi('Mit Hinweis', c.hint, '')}${kpi('Falsch', c.wrong, 'kommen bald wieder')}${c.open ? kpi('Nicht bearbeitet', c.open, 'Zeit abgelaufen') : ''}</section>
       <section class="card">${s.items.map(i => { const t = TASKS[i.id]; return `<a class="row" href="#/task/${t.id}"><b>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${t.label}</b><span class="res ${i.result || ''}">${{ first: 'sofort richtig', hint: 'mit Hinweis', wrong: 'falsch' }[i.result] || 'offen'}</span></a>`; }).join('')}</section>
-      <div class="actions"><a class="btn primary" href="#/training">Neues Training</a><a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
+      <div class="actions wrap"><a class="btn primary" href="#/training">Neues Training</a>${c.wrong || c.hint ? `<a class="btn" href="#/mistakes">${ic('repeat')} Zum Fehlerheft</a>` : ''}<a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
   }
 
 
@@ -859,13 +902,14 @@
     const stt = await Y.push.status().catch(() => 'unsupported');
     const ios = Y.push.standaloneNeeded();
     box.innerHTML = `<label>Mitteilungen bei Duellen</label>
-      ${stt === 'on' ? '<p><svg class="ic"><use href="#i-bell"/></svg> Aktiv auf diesem Gerät – du bekommst Bescheid, wenn dich jemand herausfordert oder euer Duell gespielt hat.</p><button class="btn sm ghost" id="pushOff">Ausschalten</button>'
+      ${stt === 'on' ? `<p><svg class="ic"><use href="#i-bell"/></svg> Aktiv auf diesem Gerät – du bekommst Bescheid, wenn dich jemand herausfordert oder euer Duell gespielt hat.</p><label class="tg"><input type="checkbox" id="remind" ${st.settings.reminder === false ? '' : 'checked'}> Abends um 19 Uhr erinnern, wenn das Tagesziel noch offen ist</label><button class="btn sm ghost" id="pushOff">Mitteilungen ausschalten</button>`
       : stt === 'denied' ? '<p class="muted">Mitteilungen sind für diese Seite blockiert. Erlauben kannst du sie in den Browser-/Systemeinstellungen.</p>'
       : stt === 'unsupported' && ios ? '<p class="muted">Auf iPhone/iPad: erst über Teilen → „Zum Home-Bildschirm“ installieren und die App von dort öffnen – dann kannst du Mitteilungen hier einschalten.</p>'
       : stt === 'unsupported' ? '<p class="muted">Dieser Browser unterstützt keine Mitteilungen.</p>'
       : '<button class="btn sm primary" id="pushOn"><svg class="ic"><use href="#i-bell"/></svg> Mitteilungen einschalten</button>'}`;
     const on = $('#pushOn', box), off = $('#pushOff', box);
     if (on) on.onclick = async () => { on.disabled = true; try { await Y.push.enable(); AP2Toast('Mitteilungen eingeschaltet.'); } catch (e) { AP2Toast(e.message); } renderPush(); };
+    const rm = $('#remind', box); if (rm) rm.onchange = () => { st.settings.reminder = rm.checked; S.save(true); };
     if (off) off.onclick = async () => { off.disabled = true; try { await Y.push.disable(); } catch (e) { AP2Toast(e.message); } renderPush(); };
   }
   function renderBoard(rows) {
@@ -1026,8 +1070,17 @@
       <section class="card danger-zone"><h2>Lernstand zurücksetzen</h2><p class="muted">Setzt alles auf 0: bearbeitete Aufgaben, Wiederholungen, Statistik, angefangene Trainings und Prüfungen, Rechenpapier. Einstellungen, Prüfungstag und Konto bleiben. Vorher wird automatisch eine Sicherung angelegt, die du unter „Sicherung“ wiederherstellen kannst.</p>
         <div class="actions"><button class="btn danger" id="resetAll">Lernstand auf 0 setzen</button></div></section>
       <section class="card" id="adminBox" hidden></section>
-      <p class="muted small" style="text-align:center">App-Version ${APPV}</p>`;
+      <div class="actions" style="justify-content:center;margin-bottom:24px"><span class="muted small">App-Version ${APPV}</span><button class="btn sm" id="upd">Nach Update suchen</button></div>`;
     renderAccount();
+    $('#upd').onclick = async () => {
+      const bt = $('#upd'); bt.disabled = true; bt.textContent = 'Suche …';
+      try {
+        const r = await fetch('sw.js', { cache: 'no-store' }).then(x => x.text()); const v = (r.match(/ap2-claude-v(\d+)/) || [])[1];
+        if (v && +v > APPV) { AP2Toast('Update gefunden – wird geladen …'); if (SWREG) await SWREG.update().catch(() => {}); setTimeout(() => location.reload(), 1200); return; }
+        AP2Toast('Du hast schon die neueste Version.');
+      } catch (e) { AP2Toast('Keine Verbindung – später nochmal versuchen.'); }
+      bt.disabled = false; bt.textContent = 'Nach Update suchen';
+    };
     $('#resetAll').onclick = async () => {
       const v = await ask({ title: 'Wirklich alles auf 0 setzen?', text: 'Zum Bestätigen <b>null</b> eintippen.', input: 'text', buttons: [['Auf 0 setzen', true, 'danger'], ['Abbrechen', false, 'ghost']] });
       if (v === false || v == null) return;
@@ -1082,14 +1135,32 @@
     try {
       const [al, pr, rp] = await Promise.all([A.allowed(), A.profiles(), A.reports()]);
       box.innerHTML = `<h2>Administration</h2>
-        <h3>Freigegebene E-Mails (${al.length})</h3>${al.map(a => { const reg = pr.find(x => x.email === a.email); return `<div class="row"><b>${esc(a.email)}</b><span>${esc(a.display_name || '')}</span><span class="muted">${a.role === 'admin' ? 'Admin' : 'Lernende/r'} · ${reg ? 'Konto angelegt' : 'noch nicht registriert'}</span></div>`; }).join('')}
+        <h3>Freigegebene E-Mails (${al.length})</h3>${al.map(a => { const reg = pr.find(x => x.email === a.email); return `<div class="resume"><div class="row"><b>${esc(a.email)}</b><span>${esc(a.display_name || '')}</span><span class="muted">${a.role === 'admin' ? 'Admin' : 'Lernende/r'} · ${reg ? 'Konto angelegt' : 'noch nicht registriert'}</span></div>${!reg && a.role !== 'admin' ? `<button class="ib del" data-revoke="${esc(a.email)}" title="Freigabe entfernen" aria-label="Freigabe entfernen"><svg class="ic"><use href="#i-x"/></svg></button>` : ''}</div>`; }).join('')}
+        <h3>Konten</h3><div id="accList"><p class="muted">Wird geladen …</p></div>
         <div class="form"><label for="ne">Kollegen freigeben</label><input class="inp" id="ne" type="email" placeholder="E-Mail"><input class="inp" id="nn" placeholder="Name (optional)"><div class="actions"><button class="btn primary" id="na">Freigeben</button></div></div>
         <h3>Fehlermeldungen (${rp.length})</h3>${rp.length ? rp.map(r => `<div class="row"><b>${esc(r.task_id)}</b><span>${esc(r.text)}</span><span class="muted">${new Date(r.created_at).toLocaleDateString('de-DE')}</span><select data-rs="${r.id}">${['offen', 'angenommen', 'abgelehnt', 'erledigt'].map(s => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`).join('') : '<p class="muted">Keine Meldungen.</p>'}`;
+      renderAccounts();
+      $$('[data-revoke]', box).forEach(b => b.onclick = async () => { if (!(await ask({ title: 'Freigabe entfernen?', text: `${esc(b.dataset.revoke)} kann sich dann nicht mehr registrieren.`, buttons: [['Entfernen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return; try { await AP2Sync.admin.revoke(b.dataset.revoke); AP2Toast('Freigabe entfernt.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } });
       $('#na').onclick = async () => { try { await A.allow($('#ne').value, $('#nn').value); AP2Toast('Freigegeben. Die Person kann jetzt ein Konto anlegen.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } };
       $$('[data-rs]', box).forEach(sel => sel.onchange = async () => { try { await A.setReport(+sel.dataset.rs, sel.value); AP2Toast('Status gespeichert.'); } catch (e) { AP2Toast(e.message); } });
     } catch (e) { box.innerHTML = `<h2>Administration</h2><p class="muted">${esc(e.message)}</p>`; }
   }
 
+  async function renderAccounts() {
+    const box = $('#accList'); if (!box) return;
+    try {
+      const { users } = await AP2Sync.admin.users();
+      const ago = ts => ts ? new Date(ts).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) : 'nie';
+      box.innerHTML = users.map(u => `<div class="resume"><div class="row"><b>${esc(u.name || u.email.split('@')[0])}${u.me ? ' (du)' : ''}</b><span class="muted">${esc(u.email)}</span><span class="muted small">${u.role === 'admin' ? 'Admin · ' : ''}${u.banned ? 'gesperrt · ' : ''}zuletzt ${ago(u.last)}</span></div>${u.me ? '' : `<button class="ib del" data-udel="${u.id}" data-mail="${esc(u.email)}" title="Konto löschen" aria-label="Konto löschen"><svg class="ic"><use href="#i-trash"/></svg></button>`}</div>`).join('') || '<p class="muted">Keine Konten.</p>';
+      $$('[data-udel]', box).forEach(b => b.onclick = async () => {
+        let revoke = true; setTimeout(() => { const c = document.getElementById('revk'); if (c) c.onchange = () => { revoke = c.checked; }; });
+        const v = await ask({ title: 'Konto löschen?', text: `<b>${esc(b.dataset.mail)}</b> wird mit Lernstand, Duellen und Ranglisten-Einträgen endgültig gelöscht. Das lässt sich nicht rückgängig machen.<br><br><label class="tg"><input type="checkbox" id="revk" checked> Freigabe auch entfernen (die Person kann sich dann nicht neu registrieren)</label>`, buttons: [['Endgültig löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] });
+        if (v !== true) return;
+        b.disabled = true;
+        try { await AP2Sync.admin.deleteUser(b.dataset.udel, revoke); AP2Toast('Konto gelöscht.'); renderAdmin(); } catch (e) { AP2Toast(e.message); b.disabled = false; }
+      });
+    } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  }
   const REASON = { 'vor-zuruecksetzen': 'vor Zurücksetzen auf 0', 'vor-cloud-uebernahme': 'vor Übernahme aus der Cloud', 'vor-import': 'vor Import', 'vor-migration': 'vor Update', 'vor-wiederherstellung': 'vor Wiederherstellung', auto: 'automatisch', automatisch: 'automatisch' };
   function download(name, text, type) {
     if (window.top === window) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); return; }
