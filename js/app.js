@@ -35,6 +35,7 @@
     });
   }
   window.AP2Ask = ask;
+  document.addEventListener('click', e => { const b = e.target.closest('[data-back]'); if (b) { e.preventDefault(); go(b.dataset.back); } });
 
   window.AP2Toast = msg => { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2600); };
 
@@ -228,12 +229,20 @@
       <section class="card form">
         <label>Anzahl</label><div class="seg big" id="size">${[5, 10, 20].map(n => `<button data-n="${n}" class="${n === (st.settings.sessionSize || 10) ? 'on' : ''}">${n}</button>`).join('')}</div>
         <label>Aufgabenart</label><div class="chips" id="types"><button class="chip on" data-ty="mc">Multiple Choice (Teil A, WiSo)</button><button class="chip" data-ty="open">Offene Aufgaben (Teil B, WiSo U)</button></div>
-        <label>Bereiche</label><div class="chips" id="parts">${MC_PARTS.concat(OPEN_PARTS).map(p => `<button class="chip on" data-p="${p}">${PART_SHORT[p]}</button>`).join('')}</div>
-        ${REG.topics ? `<label>Themen <span class="muted small">(optional)</span></label><div class="chips" id="topics">${Object.entries(REG.topics).map(([k, n]) => `<button class="chip" data-tp="${k}">${esc(n)}</button>`).join('')}</div>` : ''}
-        <label>Prüfungstermine</label><div class="chips" id="pers"><button class="chip on" data-all="1">Alle</button>${ps.map(p => `<button class="chip" data-per="${p}">${esc(periodLabel(p))}</button>`).join('')}</div>
+        <details class="fold"><summary><span>Bereiche</span><span class="fold-v" data-sum="parts"></span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips" id="parts">${MC_PARTS.concat(OPEN_PARTS).map(p => `<button class="chip on" data-p="${p}">${PART_SHORT[p]}</button>`).join('')}</div></details>
+        ${REG.topics ? `<details class="fold"><summary><span>Themen</span><span class="fold-v" data-sum="topics"></span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips" id="topics">${Object.entries(REG.topics).map(([k, n]) => `<button class="chip" data-tp="${k}">${esc(n)}</button>`).join('')}</div></details>` : ''}
+        <details class="fold"><summary><span>Prüfungstermine</span><span class="fold-v" data-sum="pers"></span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips" id="pers"><button class="chip on" data-all="1">Alle</button>${ps.map(p => `<button class="chip" data-per="${p}">${esc(periodLabel(p))}</button>`).join('')}</div></details>
         <label>Zeitlimit (optional)</label><div class="seg" id="tl"><button data-t="0" class="on">ohne</button><button data-t="1">Challenge: 2 min/Aufgabe</button></div>
-        <div class="actions"><button class="btn primary lg" id="go">Training starten</button></div>
+        <div class="actions go-bar"><button class="btn primary lg" id="go">${ic('bolt')} Training starten</button></div>
       </section>`;
+    const sum = () => {
+      if (!$("[data-sum=\"parts\"]")) return;
+      const allP = MC_PARTS.concat(OPEN_PARTS).length, onP = $$('#parts .on');
+      $('[data-sum="parts"]').textContent = onP.length === allP ? 'Alle' : onP.length ? onP.map(b => b.textContent).join(', ') : 'Keine';
+      const tp = $$('#topics .on'); const ts = $('[data-sum="topics"]'); if (ts) ts.textContent = tp.length ? (tp.length === 1 ? tp[0].textContent : tp.length + ' gewählt') : 'Alle';
+      const pr = $$('#pers [data-per].on'); $('[data-sum="pers"]').textContent = pr.length ? (pr.length <= 2 ? pr.map(b => b.textContent).join(', ') : pr.length + ' gewählt') : 'Alle';
+    };
+    m.querySelector('.form').addEventListener('click', () => setTimeout(sum)); sum();
     const pick = (box, multi) => box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (!multi) $$('button', box).forEach(x => x.classList.remove('on')); b.classList.toggle('on', multi ? !b.classList.contains('on') : true); });
     pick($('#size'), false); pick($('#tl'), false); pick($('#parts'), true); pick($('#types'), true); if ($('#topics')) pick($('#topics'), true);
     $('#pers').addEventListener('click', e => {
@@ -305,11 +314,11 @@
         <span class="muted small">Beleg: IHK-Lösungsschablone ${t.solution.template}, Lösungsheft S. ${t.solution.page}</span>
         <button class="link" id="showKey">Lösungsschablone ansehen</button></div>`;
     }
-    const prog = `<div class="sess-top"><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
       <span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     const tOpts = { tutor: () => phase === 'done' ? 'full' : 'hint', myAnswer: () => it.tries.length ? 'Antwort ' + it.tries.join(', dann ') : '' };
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card">${msg}<p class="q">Wähle die richtige Antwort:</p>${optButtons(null, dis, cls)}
-      <div class="actions wrap">${phase === 'done' ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button><button class="btn ghost" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button>` : ''}<button class="btn ghost" id="pause">Pausieren</button></div>${phase === 'done' ? '<div id="xpl"></div>' : ''}</div>`, tOpts)}</div>`;
+      <div class="actions wrap">${phase === 'done' ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button><button class="btn ghost" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button>` : ''}</div>${phase === 'done' ? '<div id="xpl"></div>' : ''}</div>`, tOpts)}</div>`;
     wireFrame(t, m, tOpts);
     const te = $('#tutorExplain', m); if (te) te.onclick = () => openTutor(t, tOpts, 'explain');
     if (phase === 'done') explainInline($('#xpl', m), t, tOpts, it.result !== 'first');
@@ -326,7 +335,7 @@
       s.updated = Date.now(); S.save(true); route();
     });
     const nx = $('#next'); if (nx) nx.onclick = () => { s.idx++; if (s.idx >= s.items.length) s.done = true; s.updated = Date.now(); S.save(true); route(); };
-    $('#pause').onclick = () => { go('#/'); };
+    
     const sk = $('#showKey'); if (sk) sk.onclick = () => openPage(`${t.period}_LOES`, t.solution.page, `Lösung ${t.periodLabel} (${t.solution.template})`);
   }
   function sessionEnd(m, s) {
@@ -428,13 +437,13 @@
   function openSession(m, s, it, t) {
     it.rec = it.rec || { ans: null, self: {}, phase: it.result ? 'done' : 'ask' };
     const oOpts = { tutor: () => it.rec.phase === 'ask' ? 'hint' : 'full', myAnswer: () => openAnswerText(t, it.rec) };
-    const prog = `<div class="sess-top"><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div><span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
-    m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card openc"><div id="openBox"></div><div class="actions">${it.result ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button>` : ''}<button class="btn ghost" id="pause">Pausieren</button></div></div>`, oOpts)}</div>`;
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div><span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
+    m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card openc"><div id="openBox"></div><div class="actions">${it.result ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button>` : ''}</div></div>`, oOpts)}</div>`;
     wireFrame(t, m, oOpts); hydrate(m);
     openWidget(m, t, it.rec, (rec, gr) => { if (gr) { it.result = recordOpen(t, rec, gr, 'training'); } s.updated = Date.now(); S.save(true); if (gr) route(); });
     if (s.endsAt) { const upd = () => { const r = s.endsAt - Date.now(); if (r <= 0) { s.done = true; S.save(true); return route(); } $('#timer').textContent = fmt(r); }; upd(); tick = setInterval(upd, 1000); }
     const nx = $('#next'); if (nx) nx.onclick = () => { s.idx++; if (s.idx >= s.items.length) s.done = true; S.save(true); route(); };
-    $('#pause').onclick = () => go('#/');
+    
   }
   function startBook(docId) {
     const ts = tasksOf(docId, 'open').filter(t => t.gradable); if (!ts.length) return AP2Toast('Keine bewertbaren Aufgaben in diesem Heft.');
@@ -502,9 +511,9 @@
     if (e.endsAt && Date.now() >= e.endsAt) return submitExam(e, true);
     const t = TASKS[e.taskIds[e.cur]];
     m.innerHTML = `<div class="task-page exam-mode">
-      <div class="exam-bar"><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
+      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
         ${e.endsAt ? '<span class="timer big" id="timer"></span>' : ''}<span class="muted" id="cnt"></span>
-        <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button>${e.strict ? '' : '<button class="btn sm ghost" id="pz">Pause</button>'}<button class="btn sm primary" id="sub">Abgeben</button></div></div>
+        <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button><button class="btn sm primary" id="sub">Abgeben</button></div></div>
       <div class="ovl" id="ovl" hidden><div class="card"><div class="ovl-h"><b>Übersicht</b><span class="muted small">blau = beantwortet · gelb unterstrichen = unsicher · durchgestrichen = abgewählt · fett = Pflicht</span><button class="ib" id="ovx">✕</button></div><div id="gridBox"></div></div></div>
       ${taskFrame(t, `<div class="answer card exam-card" id="ansBox"></div>`, { noReport: e.strict })}
     </div>`;
@@ -533,7 +542,7 @@
     $('#ovx').onclick = () => { $('#ovl').hidden = true; };
     const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) return submitExam(e, true); tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { const open = e.taskIds.filter(x => !e.answers[x] && !e.deselected.includes(TASKS[x].number)).length; const fl = Object.values(e.flags).filter(Boolean).length; if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch offen.` : 'Alle Aufgaben sind beantwortet.') + (fl ? ` ${fl} als unsicher markiert.` : ''), buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) submitExam(e, false); };
-    const pz = $('#pz'); if (pz) pz.onclick = () => { go('#/'); };
+    const pz = $('#pz'); if (pz) pz.onclick = () => { if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go('#/exams'); };
   }
   /* Korrekturdurchgang nach Abgabe: Aufgabe für Aufgabe, mit eigener und offizieller Antwort */
   function review(m, [id, idx]) {
@@ -653,9 +662,9 @@
     if (e.endsAt && Date.now() >= e.endsAt) return bSubmit(e, true);
     const ts = bTasks(e); e.cur = Math.max(0, Math.min(ts.length - 1, e.cur)); const t = ts[e.cur]; const rec = e.recs[t.id];
     m.innerHTML = `<div class="task-page exam-mode">
-      <div class="exam-bar"><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
+      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
         ${e.endsAt ? '<span class="timer big" id="timer"></span>' : ''}<span class="muted" id="cnt">${bProgress(e)}</span>
-        <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button>${e.strict ? '' : '<button class="btn sm ghost" id="pz">Pause</button>'}<button class="btn sm primary" id="sub">Abgeben</button></div></div>
+        <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button><button class="btn sm primary" id="sub">Abgeben</button></div></div>
       <div class="ovl" id="ovl" hidden><div class="card"><div class="ovl-h"><b>Übersicht</b><span class="muted small">blau = bearbeitet</span><button class="ib" id="ovx">✕</button></div>${bGrid(e)}</div></div>
       ${taskFrame(t, `<div class="answer card exam-card openc"><div class="ex-head"><span class="ex-no">${esc(t.label)}</span><span>${e.cur + 1} von ${ts.length} · ${t.points} Punkte</span></div>
         <div id="bBox">${openPanelHTML(t, rec.ans, null).replace(/ · Bewertung durch Selbstkontrolle[^<]*/, '')}</div>
@@ -670,7 +679,7 @@
     $('#nxt').onclick = () => e.cur + 1 < ts.length ? nav(e.cur + 1) : $('#sub').click();
     $$('#ovl [data-go]', m).forEach(b => b.onclick = () => nav(+b.dataset.go));
     $('#ov').onclick = () => { $('#ovl').hidden = !$('#ovl').hidden; }; $('#ovx').onclick = () => { $('#ovl').hidden = true; };
-    const pz = $('#pz'); if (pz) pz.onclick = () => { keep(); go('#/'); };
+    const pz = $('#pz'); if (pz) pz.onclick = () => { keep(); if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go('#/exams'); };
     const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) { keep(); return bSubmit(e, true); } tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { keep(); const open = ts.filter(x => !bHasAnswer(e, x)).length;
       if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch ohne Antwort.` : 'Alle Aufgaben bearbeitet.') + ' Danach korrigierst du Aufgabe für Aufgabe mit der Musterlösung.', buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) bSubmit(e, false); };
@@ -899,8 +908,8 @@
     const draw = () => {
       if (ROUTE !== '#/duel/' + id) return;
       const t = TASKS[d.task_ids[p.cur]]; if (pad) { pad.destroy(); pad = null; }
-      m.innerHTML = `<div class="task-page exam-mode"><div class="exam-bar"><div class="eb-l"><b><svg class="ic"><use href="#i-duel"/></svg> Duell gegen ${esc(d.opp_name)}</b></div><span class="timer big" id="timer"></span>
-        <span class="muted">${p.answers.filter(Boolean).length}/${p.answers.length} beantwortet</span><div class="eb-r"><button class="btn sm ghost" id="dPause">Später weiter</button><button class="btn sm primary" id="dSub">Abgeben</button></div></div>
+      m.innerHTML = `<div class="task-page exam-mode"><div class="exam-bar"><button class="back" id="dPause"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b><svg class="ic"><use href="#i-duel"/></svg> Duell gegen ${esc(d.opp_name)}</b></div><span class="timer big" id="timer"></span>
+        <span class="muted">${p.answers.filter(Boolean).length}/${p.answers.length} beantwortet</span><div class="eb-r"><button class="btn sm primary" id="dSub">Abgeben</button></div></div>
         <div class="dots duel-dots">${p.answers.map((a, i) => `<button class="${a ? 'ans' : ''} ${i === p.cur ? 'cur' : ''}" data-go="${i}">${i + 1}</button>`).join('')}</div>
         ${taskFrame(t, `<div class="answer card exam-card"><div class="ex-head"><span class="ex-no">${p.cur + 1}</span><span>von ${p.answers.length}</span></div>${optButtons(p.answers[p.cur] || null, [])}
           <div class="ex-nav"><button class="btn lg ghost" id="dPrev" ${p.cur ? '' : 'disabled'}>← Zurück</button><button class="btn lg ${p.answers[p.cur] ? 'primary' : ''}" id="dNext">${p.cur + 1 < p.answers.length ? 'Weiter →' : 'Zur Abgabe'}</button></div></div>`, { noReport: true })}</div>`;
