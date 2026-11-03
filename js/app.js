@@ -171,12 +171,13 @@
         <label>Anzahl</label><div class="seg big" id="size">${[5, 10, 20].map(n => `<button data-n="${n}" class="${n === (st.settings.sessionSize || 10) ? 'on' : ''}">${n}</button>`).join('')}</div>
         <label>Aufgabenart</label><div class="chips" id="types"><button class="chip on" data-ty="mc">Multiple Choice (Teil A, WiSo)</button><button class="chip" data-ty="open">Offene Aufgaben (Teil B, WiSo U)</button></div>
         <label>Bereiche</label><div class="chips" id="parts">${MC_PARTS.concat(OPEN_PARTS).map(p => `<button class="chip on" data-p="${p}">${PART_SHORT[p]}</button>`).join('')}</div>
+        ${REG.topics ? `<label>Themen <span class="muted small">(optional)</span></label><div class="chips" id="topics">${Object.entries(REG.topics).map(([k, n]) => `<button class="chip" data-tp="${k}">${esc(n)}</button>`).join('')}</div>` : ''}
         <label>Prüfungstermine</label><div class="chips" id="pers"><button class="chip on" data-all="1">Alle</button>${ps.map(p => `<button class="chip" data-per="${p}">${esc(periodLabel(p))}</button>`).join('')}</div>
         <label>Zeitlimit (optional)</label><div class="seg" id="tl"><button data-t="0" class="on">ohne</button><button data-t="1">Challenge: 2 min/Aufgabe</button></div>
         <div class="actions"><button class="btn primary lg" id="go">Training starten</button></div>
       </section>`;
     const pick = (box, multi) => box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (!multi) $$('button', box).forEach(x => x.classList.remove('on')); b.classList.toggle('on', multi ? !b.classList.contains('on') : true); });
-    pick($('#size'), false); pick($('#tl'), false); pick($('#parts'), true); pick($('#types'), true);
+    pick($('#size'), false); pick($('#tl'), false); pick($('#parts'), true); pick($('#types'), true); if ($('#topics')) pick($('#topics'), true);
     $('#pers').addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.all) { $$('#pers button').forEach(x => x.classList.toggle('on', x === b)); }
@@ -186,7 +187,8 @@
       const n = +$('#size .on').dataset.n; st.settings.sessionSize = n;
       const parts = $$('#parts .on').map(b => b.dataset.p); const pers = $$('#pers [data-per].on').map(b => b.dataset.per);
       const types = $$('#types .on').map(b => b.dataset.ty);
-      const ids = C.pickSession(REG.tasks, st.srs, n, { parts, periods: pers, types });
+      const topics = $$('#topics .on').map(b => b.dataset.tp);
+      const ids = C.pickSession(REG.tasks, st.srs, n, { parts, periods: pers, types, topics });
       if (!ids.length) return AP2Toast('Keine passenden Aufgaben gefunden.');
       const id = 's' + Date.now().toString(36);
       const limit = +$('#tl .on').dataset.t ? ids.length * 120000 : 0;
@@ -853,13 +855,36 @@
     }).join('');
     const weak = gradable().filter(t => st.srs[t.id] && st.srs[t.id].wrong > 0).sort((a, b) => st.srs[b.id].wrong - st.srs[a.id].wrong).slice(0, 12);
     m.innerHTML = `<header class="page-h"><h1>Statistik</h1></header>
+      <section class="card"><h2>Themengebiete</h2><p class="muted small">Wie sicher du in jedem Thema bist (Anteil „sofort richtig“ bei bearbeiteten Aufgaben). Themen wurden automatisch anhand des Aufgabentexts zugeordnet.</p>${topicBars()}</section>
       <section class="card"><h2>Bereiche</h2>${partBars()}</section>
       <section class="card"><h2>Fortschritt je Prüfungstermin</h2><table class="tbl prog"><thead><tr><th></th>${MC_PARTS.map(p => `<th>${PART_SHORT[p]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></section>
       <section class="card"><h2>Häufigste Fehler</h2>${weak.length ? weak.map(t => `<a class="row" href="#/task/${t.id}"><b>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${t.label}</b><span>${st.srs[t.id].wrong}× falsch</span></a>`).join('') : '<p class="muted">Noch keine Fehler erfasst.</p>'}</section>
       <div class="actions"><button class="btn ghost" id="csv">Versuche als CSV exportieren</button></div>`;
+    $$('[data-topic]', m).forEach(b => b.onclick = () => topicTraining(b.dataset.topic));
     $('#csv').onclick = () => download('ap2-versuche.csv', 'Aufgabe;Version;Modus;Antworten;Ergebnis;Zeit\n' + st.attempts.map(a => [a.task, a.v, a.mode, a.tries.join('/'), a.result, new Date(a.at).toISOString()].join(';')).join('\n'), 'text/csv');
   }
 
+  function topicStats() {
+    const by = {};
+    for (const t of gradable()) { if (!t.topic) continue; const b = by[t.topic] = by[t.topic] || { total: 0, seen: 0, first: 0, att: 0, wiso: t.part.startsWith('WISO') };
+      b.total++; const e = st.srs[t.id]; if (e && e.seen) { b.seen++; b.first += e.first; b.att += e.seen; } }
+    return by;
+  }
+  function topicBars() {
+    const by = topicStats(); const N = (REG.topics || {});
+    const row = k => { const b = by[k]; const q = b.att ? Math.round(100 * b.first / b.att) : null; const cls = q == null ? '' : q >= 75 ? 'ok' : q >= 50 ? 'mid' : 'low';
+      return `<div class="bar topic ${cls}"><div class="bar-l"><b>${esc(N[k] || k)}</b><span class="muted">${b.seen}/${b.total} bearbeitet</span></div><div class="track"><i style="width:${q || 0}%"></i></div><span class="pct">${q == null ? '–' : q + '%'}</span><button class="btn sm ghost" data-topic="${k}">Üben</button></div>`; };
+    const keys = Object.keys(by).sort((a, b) => (by[a].wiso - by[b].wiso) || (N[a] || a).localeCompare(N[b] || b));
+    const tech = keys.filter(k => !by[k].wiso), wiso = keys.filter(k => by[k].wiso);
+    return keys.length ? `${tech.map(row).join('')}${wiso.length ? `<h3>WiSo</h3>${wiso.map(row).join('')}` : ''}` : '<p class="muted">Noch keine Themen zugeordnet.</p>';
+  }
+  function topicTraining(k) {
+    const ids = C.pickSession(REG.tasks, st.srs, st.settings.sessionSize || 10, { topics: [k] });
+    if (!ids.length) return AP2Toast('Keine Aufgaben zu diesem Thema.');
+    const id = 's' + Date.now().toString(36);
+    st.sessions[id] = { id, items: ids.map(t => ({ id: t, tries: [], result: null })), idx: 0, created: Date.now(), updated: Date.now(), done: false, endsAt: 0, topic: k };
+    S.save(true); go('#/session/' + id);
+  }
   /* ---------- Einstellungen & Daten ---------- */
   function settings(m) {
     const b = S.backups();

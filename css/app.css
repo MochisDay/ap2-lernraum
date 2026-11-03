@@ -233,3 +233,4 @@ body.sym-on main{padding-bottom:140px}
 @media (min-width:1001px){.symbar:not(.mini){left:auto;right:16px;bottom:16px;width:min(560px,calc(100vw - 32px));border:1px solid var(--line);border-radius:14px}}
 body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)} @media (max-width:700px){body.sym-on .tutor-panel{height:calc(78dvh - var(--symh,0px))}}
 .airead{flex-basis:100%;display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:var(--surface2);border:1px dashed var(--line);font-size:14px} .airead span{font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap}
+.bar.topic{grid-template-columns:minmax(0,1fr) minmax(80px,2fr) 48px auto} .bar.topic.low .track i{background:var(--bad)} .bar.topic.mid .track i{background:#e0a400} .bar.topic.ok .track i{background:var(--good)}

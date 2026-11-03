@@ -60,6 +60,7 @@
     if (o.parts && o.parts.length) pool = pool.filter(t => o.parts.includes(t.part));
     if (o.types && o.types.length) pool = pool.filter(t => o.types.includes(t.type || 'mc'));
     if (o.periods && o.periods.length) pool = pool.filter(t => o.periods.includes(t.period));
+    if (o.topics && o.topics.length) pool = pool.filter(t => o.topics.includes(t.topic));
     const weak = [], fresh = [], review = [], rest = [];
     for (const t of pool) {
       const e = srs[t.id];
