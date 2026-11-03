@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 29;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 30;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   const isMarked = id => !!(st.marked && st.marked[id]);
   function toggleMark(id) {

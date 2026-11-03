@@ -475,7 +475,7 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .starts{grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr))}
 .start{justify-content:flex-start;gap:18px}
 .start b{margin-bottom:3px}
-@media (min-width:701px) and (max-width:1000px){.starts{grid-template-columns:repeat(2,minmax(0,1fr))} .start{min-height:0;flex-direction:row;align-items:center;gap:16px}}
+@media (min-width:701px) and (max-width:1000px){.starts{grid-template-columns:repeat(3,minmax(0,1fr))} .start.main{grid-column:1/-1}}
 /* Hover-Farbe nur mit Maus – auf dem iPad bleibt sonst der zuletzt angetippte Tab hell */
 @media (hover:none){#nav a:hover{background:none;color:var(--muted)} #nav a.on:hover{color:var(--ink)} .start:hover{transform:none;box-shadow:var(--shadow)} a.row:hover{background:var(--surface2)}}
 @media (hover:none) and (min-width:1001px){#nav a:hover{color:var(--sideInk)} #nav a.on:hover{color:var(--sideHi)}}
