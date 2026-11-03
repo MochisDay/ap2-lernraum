@@ -81,10 +81,37 @@
   const duels = {
     players: () => rpc('duel_players'),
     list: () => rpc('my_duels'),
-    create: (opponent, taskIds, label) => rpc('create_duel', { p_opponent: opponent, p_task_ids: taskIds, p_label: label || null }),
-    submit: (id, answers, timeMs) => rpc('submit_duel', { p_duel: id, p_answers: answers, p_time_ms: Math.round(timeMs) }),
+    create: async (opponent, taskIds, label) => { const id = await rpc('create_duel', { p_opponent: opponent, p_task_ids: taskIds, p_label: label || null }); notifyDuel(id, 'new'); return id; },
+    submit: async (id, answers, timeMs) => { const r = await rpc('submit_duel', { p_duel: id, p_answers: answers, p_time_ms: Math.round(timeMs) }); notifyDuel(id, 'done'); return r; },
     decline: id => rpc('decline_duel', { p_duel: id })
   };
+  /* Push-Benachrichtigungen (Duelle). Der öffentliche VAPID-Schlüssel darf im Code stehen; der private liegt nur auf dem Server.
+     iPhone/iPad: nur, wenn die App über „Zum Home-Bildschirm“ installiert ist (ab iOS 16.4). */
+  const VAPID = 'BMbEHx1g2xV35Bh9g2xqTwjAL5Oiy-5o3G2Z2NfLJPEsz5Z3ZhcI5hYVlLvx0ZnKwZyXNbEiRuEf_WD1PiD1mz4';
+  const b64u = s => { const p = '='.repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+  const push = {
+    supported: () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
+    standaloneNeeded: () => /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document && !(navigator.standalone || matchMedia('(display-mode: standalone)').matches),
+    async status() { if (!push.supported()) return 'unsupported'; if (Notification.permission === 'denied') return 'denied'; const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription(); return sub ? 'on' : 'off'; },
+    async enable() {
+      if (!session || !(await ensureFresh())) throw new Error('Bitte zuerst anmelden.');
+      if (!push.supported()) throw new Error(push.standaloneNeeded() ? 'Auf iPhone/iPad gehen Mitteilungen nur, wenn die App über Teilen → „Zum Home-Bildschirm“ installiert ist. Öffne sie dann von dort.' : 'Dieser Browser unterstützt keine Mitteilungen.');
+      const perm = await Notification.requestPermission(); if (perm !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt (in den Systemeinstellungen änderbar).');
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+      const j = sub.toJSON();
+      await api('/rest/v1/push_subs?on_conflict=endpoint', { method: 'POST', body: { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: session.user.id }, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
+    },
+    async disable() {
+      const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription(); if (!sub) return;
+      try { if (session && await ensureFresh()) await api('/rest/v1/push_subs?endpoint=eq.' + encodeURIComponent(sub.endpoint), { method: 'DELETE', headers: { Prefer: 'return=minimal' } }); } catch (_) {}
+      await sub.unsubscribe();
+    }
+  };
+  function notifyDuel(id, event) {
+    if (!session || typeof id !== 'string') return;
+    fetch(URL_ + '/functions/v1/duel-notify', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ duel: id, event }) }).catch(() => {});
+  }
   // KI-Vorschlag für offene Antworten (Edge Function ai-grade; Schlüssel liegt nur auf dem Server)
   const aiGrade = payload => aiCall('ai-grade', payload);
   // Tutor mit Streaming: onText(bisheriger Text) wird laufend aufgerufen, sobald die KI schreibt
@@ -164,7 +191,8 @@
     setInterval(() => syncNow(), 120000);
   }
 
-  window.AP2Sync = { changePassword, ready, init, signIn, signUp, signOut, resetPassword, syncNow, schedule, sendReport, serverBackups, restoreServerBackup, admin, duels, aiGrade, aiTutor, fetchData,
+  const leaderboard = () => rpc('leaderboard');
+  window.AP2Sync = { push, leaderboard, changePassword, ready, init, signIn, signUp, signOut, resetPassword, syncNow, schedule, sendReport, serverBackups, restoreServerBackup, admin, duels, aiGrade, aiTutor, fetchData,
     onStatus: f => listeners.push(f), get status() { return status; }, get session() { return session; }, get profile() { return profile; },
     lastSync: () => get('ap2.claude.lastSync') };
 })();

@@ -234,3 +234,12 @@ body.sym-on main{padding-bottom:140px}
 body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)} @media (max-width:700px){body.sym-on .tutor-panel{height:calc(78dvh - var(--symh,0px))}}
 .airead{flex-basis:100%;display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:var(--surface2);border:1px dashed var(--line);font-size:14px} .airead span{font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap}
 .bar.topic{grid-template-columns:minmax(0,1fr) minmax(80px,2fr) 48px auto} .bar.topic.low .track i{background:var(--bad)} .bar.topic.mid .track i{background:#e0a400} .bar.topic.ok .track i{background:var(--good)}
+
+/* Lernplan & Rangliste */
+.plan .plan-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}.plan h2{margin:0}
+.plan-goal{margin:10px 0 6px}.plan-goal .track{height:10px;border-radius:6px;background:var(--surface2);overflow:hidden;margin-top:6px}.plan-goal .track i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.plan-tips{margin:6px 0 10px;padding-left:18px}.plan-tips li{margin:3px 0}
+.board{display:flex;flex-direction:column;gap:6px}
+.brow{display:grid;grid-template-columns:36px 1fr;grid-template-areas:"rk n" "rk s" "rk m";column-gap:8px;padding:8px 10px;border-radius:12px;background:var(--surface2)}
+.brow.me{outline:2px solid var(--accent)}
+.brow .rk{grid-area:rk;font-size:22px;align-self:center;text-align:center}.brow>b{grid-area:n}.brow .bst{grid-area:s;display:flex;gap:12px;flex-wrap:wrap;font-size:14px}.brow>.muted{grid-area:m}

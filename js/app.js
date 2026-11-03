@@ -132,6 +132,7 @@
       <header class="hero"><div><h1>Hallo! Bereit für die AP2?</h1><p>${all.length} Originalaufgaben aus ${periods().length} Prüfungsterminen sind fachlich belegt und bewertbar.</p></div>
         <div class="hero-cta"><a class="btn primary lg" href="#/training">⚡ Schnelltraining starten</a><a class="btn ghost" href="#/exams">Originalprüfung</a></div></header>
       <div id="duelHint"></div>
+      ${planCard()}
       <section class="kpis">
         ${kpi('Bearbeitet', `${seen.length}<small>/${all.length}</small>`, 'verschiedene Aufgaben')}
         ${kpi('Fällig', due, 'Wiederholungen jetzt')}
@@ -148,6 +149,43 @@
       </div>
       <section class="card"><h2>Letzte Prüfungen</h2>${bDone.map(e => `<a class="row" href="#/bresult/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="score">${e.result.pts}/${e.result.max} P · Note ${e.result.note}</span></a>`).join('')}${exDone.length ? exDone.map(e => `<a class="row" href="#/result/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="score">${e.score.right}/${e.score.max} · ${e.score.percent}%</span></a>`).join('') : (bDone.length ? '' : '<p class="muted">Noch keine Prüfung abgegeben.</p>')}</section>`;
     duelTeaser();
+    const pb = $('#planGo'); if (pb) pb.onclick = () => go('#/training');
+    const pw = $('#planWeak'); if (pw) pw.onclick = () => { const P = planInfo(); if (P && P.weak) topicTraining(P.weak); };
+  }
+  /* ---------- Lernplan bis zum Prüfungstag ---------- */
+  const dayKey = ts => { const d = new Date(ts); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+  function planInfo() {
+    const ex = st.settings.examDate; if (!ex) return null;
+    const exam = new Date(ex + 'T08:00:00'); const today = new Date(); today.setHours(0, 0, 0, 0);
+    const days = Math.round((new Date(ex + 'T00:00:00') - today) / 864e5);
+    const all = gradable(); const now = Date.now();
+    const unseen = all.filter(t => !(st.srs[t.id] && st.srs[t.id].seen)).length;
+    const due = all.filter(t => st.srs[t.id] && st.srs[t.id].seen && st.srs[t.id].due <= now).length;
+    const learnDays = Math.max(1, days - 2);                       // die letzten 2 Tage nur Wiederholung
+    const goalNew = days > 2 ? Math.ceil(unseen / learnDays) : 0;
+    const goal = Math.max(10, Math.min(80, goalNew + Math.min(due, 30)));
+    const tk = dayKey(now); const doneToday = st.attempts.filter(a => dayKey(a.at) === tk).length;
+    const by = topicStats(); const N = REG.topics || {};
+    const weakQ = Object.keys(by).filter(k => by[k].att >= 3).sort((a, b) => by[a].first / by[a].att - by[b].first / by[b].att)[0];
+    const weak = weakQ || Object.keys(by).sort((a, b) => by[a].seen / by[a].total - by[b].seen / by[b].total)[0];
+    const lastB = Object.values(st.bexams || {}).concat(Object.values(st.exams || {})).map(e => e.started || 0).sort((a, b) => b - a)[0] || 0;
+    const phase = days < 0 ? 'done' : days <= 2 ? 'final' : days <= 21 ? 'sim' : 'learn';
+    return { weakLabel: weakQ ? 'Schwächstes Thema' : 'Noch kaum geübt', exam, days, unseen, due, goal, goalNew, doneToday, weak, weakName: weak && (N[weak] || weak), simDue: now - lastB > 6 * 864e5, phase };
+  }
+  function planCard() {
+    const P = planInfo();
+    if (!P) return `<section class="card plan"><h2>📅 Lernplan</h2><p class="muted">Trag deinen Prüfungstag ein – dann bekommst du hier jeden Tag ein Tagesziel bis zur Prüfung.</p><a class="btn sm ghost" href="#/settings">Prüfungstag eintragen</a></section>`;
+    if (P.phase === 'done') return `<section class="card plan"><h2>📅 Lernplan</h2><p>Der eingetragene Prüfungstag ist vorbei. Viel Erfolg – und trag ggf. den nächsten Termin ein.</p></section>`;
+    const pct = Math.min(100, Math.round(100 * P.doneToday / P.goal));
+    const tips = {
+      learn: [`${P.goalNew} neue Aufgaben pro Tag reichen, um bis zur Prüfung alle ${P.unseen} noch offenen einmal zu sehen.`, P.due ? `${P.due} Wiederholungen sind fällig.` : '', P.simDue ? 'Diese Woche noch keine Prüfung geschrieben – einmal pro Woche eine Originalprüfung lohnt sich.' : ''],
+      sim: ['Endspurt: Jetzt vor allem ganze Prüfungen unter Zeitdruck (Simulation) und Schwächen gezielt üben.', P.simDue ? 'Heute bietet sich eine Prüfungssimulation an.' : '', P.due ? `${P.due} Wiederholungen sind fällig.` : ''],
+      final: ['Letzte Tage: nur noch Wiederholen und Fehler anschauen, nichts Neues mehr. Früh schlafen!', P.due ? `${P.due} Wiederholungen sind fällig.` : '']
+    }[P.phase].filter(Boolean);
+    return `<section class="card plan"><div class="plan-h"><h2>📅 Noch ${P.days === 0 ? 'heute' : P.days === 1 ? '1 Tag' : P.days + ' Tage'}</h2><span class="muted small">Prüfung am ${P.exam.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'long' })}</span></div>
+      <div class="plan-goal"><span>Heute: <b>${P.doneToday}</b> / ${P.goal} Aufgaben ${P.doneToday >= P.goal ? '✅' : ''}</span><div class="track"><i style="width:${pct}%"></i></div></div>
+      <ul class="plan-tips">${tips.map(x => `<li>${esc(x)}</li>`).join('')}${P.weak ? `<li>${P.weakLabel}: <b>${esc(P.weakName)}</b></li>` : ''}</ul>
+      <div class="actions wrap">${P.phase === 'learn' || !P.simDue ? `<button class="btn primary" id="planGo">⚡ Tagesziel üben</button>` : `<a class="btn primary" href="#/exams">📝 Prüfung simulieren</a>`}${P.weak ? `<button class="btn ghost" id="planWeak">🎯 ${esc(P.weakName)} üben</button>` : ''}</div></section>`;
   }
   function duelTeaser() {
     const box = $('#duelHint'); const Y = window.AP2Sync; if (!box || !Y || !Y.session) return;
@@ -324,7 +362,7 @@
       const selfSubs = t.subtasks.filter(sb => sb.check.kind !== 'number');
       const hasInk = (st.ink[t.id] || []).some(pg => pg && pg.length);
       const canAI = graded && rec.phase === 'check' && window.AP2Sync && AP2Sync.session && t.solution.image && selfSubs.length && (hasInk || selfSubs.some(sb => ((rec.ans || {})[sb.id] || {}).text && rec.ans[sb.id].text.trim()));
-      box.innerHTML = `${openPanelHTML(t, rec.ans, graded && graded.g, rec.ai)}
+      box.innerHTML = `${t.pointsEstimated ? '<p class="muted small">ℹ️ Punkteverteilung geschätzt – das Lösungsheft nennt nur die Gesamtpunktzahl.</p>' : ''}${openPanelHTML(t, rec.ans, graded && graded.g, rec.ai)}
         ${canAI ? `<div class="actions wrap"><button class="btn ghost" id="aiBtn">${rec.ai ? '🤖 KI erneut fragen' : '🤖 KI-Vorschlag holen'}</button>${rec.ai ? '<button class="btn ghost" id="aiAll">Alle KI-Punkte übernehmen</button>' : ''}${rec.ai && rec.aiRead ? `<div class="airead"><b>📝 Das hat die KI auf deinem Rechenpapier gelesen:</b><span>${esc(rec.aiRead)}</span><small class="muted">Falsch gelesen? Dann deutlicher schreiben oder die Antwort ins Feld tippen.</small></div>` : ''}<span class="muted small" id="aiMsg">Vergleicht deine Antworten${hasInk ? ' und dein Rechenpapier' : ''} mit der Musterlösung. Nur ein Vorschlag – du entscheidest.</span></div>` : ''}
         ${graded ? `<div class="fb ${graded.done ? 'good' : 'warn'}"><b>${graded.pts} von ${t.points} Punkten</b>${graded.done ? '' : ' – bitte die Selbstkontroll-Punkte vergeben.'}
           <span class="muted small">Offizielle Musterlösung ${esc(t.label)}: Lösungsheft S. ${t.solution.pages.join(', ')} (${esc(t.solution.template)}). Falsche Folgeergebnisse zählen 0 Punkte.</span>
@@ -760,11 +798,40 @@
   function duels(m) {
     const Y = window.AP2Sync;
     m.innerHTML = `<header class="page-h"><h1>Duelle</h1><p>Fordere jemanden heraus: Ihr bekommt dieselben Original-Aufgaben (Multiple Choice), jeder spielt, wann er will. Mehr richtige Antworten gewinnen, bei Gleichstand die kürzere Zeit. Bewertet wird auf dem Server gegen die offiziellen IHK-Schablonen.</p></header>
-      ${Y && Y.session ? `<div class="grid2"><section class="card form" id="newDuel"><h2>Neues Duell</h2><p class="muted">Gegner werden geladen …</p></section><section class="card" id="duelList"><h2>Deine Duelle</h2><p class="muted">Wird geladen …</p></section></div>`
+      ${Y && Y.session ? `<section class="card" id="board"><h2>🏆 Rangliste</h2><p class="muted">Wird geladen …</p></section><div class="grid2"><section class="card form" id="newDuel"><h2>Neues Duell</h2><p class="muted">Gegner werden geladen …</p></section><section class="card" id="duelList"><h2>Deine Duelle</h2><p class="muted">Wird geladen …</p></section></div>`
         : '<section class="card"><p>Für Duelle musst du angemeldet sein (Daten &amp; Einstellungen → Konto).</p><a class="btn primary" href="#/settings">Zum Konto</a></section>'}`;
     if (!Y || !Y.session) return;
-    Promise.all([Y.duels.players(), Y.duels.list()]).then(([pl, ls]) => { DUELS = ls; if (!$('#newDuel')) return; renderNewDuel(pl); renderDuelList(ls); })
+    if (Y.push) Y.push.status().then(x => { if (x === 'off' && !st.settings.pushAsked && $('#board')) { $('#board').insertAdjacentHTML('beforebegin', '<a class="banner" href="#/settings" id="pushTip">🔔 Willst du Bescheid bekommen, wenn dich jemand herausfordert? Mitteilungen einschalten →</a>'); $('#pushTip').onclick = () => { st.settings.pushAsked = 1; S.save(true); }; } }).catch(() => {});
+        Y.leaderboard().then(renderBoard).catch(e => { const b = $('#board'); if (b) b.innerHTML = `<h2>🏆 Rangliste</h2><p class="muted">${esc(e.message)}</p>`; });
+        Promise.all([Y.duels.players(), Y.duels.list()]).then(([pl, ls]) => { DUELS = ls; if (!$('#newDuel')) return; renderNewDuel(pl); renderDuelList(ls); })
       .catch(e => { const b = $('#duelList'); if (b) b.innerHTML = `<h2>Deine Duelle</h2><p class="bad">${esc(e.message)}</p>`; });
+  }
+  async function renderPush() {
+    const box = $('#pushBox'); const Y = window.AP2Sync; if (!box || !Y || !Y.push) return;
+    if (!Y.session) { box.innerHTML = ''; return; }
+    const stt = await Y.push.status().catch(() => 'unsupported');
+    const ios = Y.push.standaloneNeeded();
+    box.innerHTML = `<label>Mitteilungen bei Duellen</label>
+      ${stt === 'on' ? '<p>🔔 Aktiv auf diesem Gerät – du bekommst Bescheid, wenn dich jemand herausfordert oder euer Duell gespielt hat.</p><button class="btn sm ghost" id="pushOff">Ausschalten</button>'
+      : stt === 'denied' ? '<p class="muted">Mitteilungen sind für diese Seite blockiert. Erlauben kannst du sie in den Browser-/Systemeinstellungen.</p>'
+      : stt === 'unsupported' && ios ? '<p class="muted">Auf iPhone/iPad: erst über Teilen → „Zum Home-Bildschirm“ installieren und die App von dort öffnen – dann kannst du Mitteilungen hier einschalten.</p>'
+      : stt === 'unsupported' ? '<p class="muted">Dieser Browser unterstützt keine Mitteilungen.</p>'
+      : '<button class="btn sm primary" id="pushOn">🔔 Mitteilungen einschalten</button>'}`;
+    const on = $('#pushOn', box), off = $('#pushOff', box);
+    if (on) on.onclick = async () => { on.disabled = true; try { await Y.push.enable(); AP2Toast('Mitteilungen eingeschaltet.'); } catch (e) { AP2Toast(e.message); } renderPush(); };
+    if (off) off.onclick = async () => { off.disabled = true; try { await Y.push.disable(); } catch (e) { AP2Toast(e.message); } renderPush(); };
+  }
+  function renderBoard(rows) {
+    const b = $('#board'); if (!b) return;
+    const score = r => r.week_ok * 2 + (r.week_n - r.week_ok) + r.streak * 3;   // richtig zählt doppelt, Lerntage-Serie gibt Bonus
+    rows = rows.slice().sort((a, c) => score(c) - score(a) || c.total_tasks - a.total_tasks);
+    const medal = ['🥇', '🥈', '🥉'];
+    const ago = ts => { if (!ts) return 'noch nie'; const d = Math.floor((Date.now() - ts) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : `vor ${d} Tagen`; };
+    b.innerHTML = `<h2>🏆 Rangliste <small class="muted">letzte 7 Tage</small></h2>
+      <div class="board">${rows.map((r, i) => `<div class="brow ${r.me ? 'me' : ''}"><span class="rk">${medal[i] || i + 1}</span><b>${esc(r.name)}${r.me ? ' (du)' : ''}</b>
+        <span class="bst"><span title="Aufgaben diese Woche"><b>${r.week_n}</b> Aufg.</span><span title="Sofort richtig diese Woche">${r.week_n ? Math.round(100 * r.week_ok / r.week_n) : 0}% richtig</span><span title="Lerntage am Stück">🔥 ${r.streak}</span><span title="Gewonnene Duelle">⚔ ${r.duel_wins}</span></span>
+        <span class="muted small">${r.total_tasks} versch. Aufgaben · zuletzt ${ago(r.last_at)}</span></div>`).join('')}</div>
+      <p class="muted small">Punkte: richtige Antwort 2, sonstige 1, je Lerntag in Serie 3. Wer nicht erscheinen will: Einstellungen → Rangliste.</p>`;
   }
   function renderNewDuel(pl) {
     const b = $('#newDuel');
@@ -894,6 +961,11 @@
     const b = S.backups();
     const audit = REG.tasks.reduce((a, t) => { a[t.status] = (a[t.status] || 0) + 1; return a; }, {});
     m.innerHTML = `<header class="page-h"><h1>Daten &amp; Einstellungen</h1></header>
+      <section class="card form"><h2>Prüfung, Rangliste &amp; Mitteilungen</h2>
+        <label for="exd">Dein Prüfungstag (schriftlich)</label><input class="inp" type="date" id="exd" value="${esc(st.settings.examDate || '')}" style="max-width:220px">
+        <p class="muted small">Daraus berechnet die Startseite dein Tagesziel bis zur Prüfung.</p>
+        <div id="pushBox"></div>
+        <label class="tg"><input type="checkbox" id="board" ${st.settings.hideBoard ? '' : 'checked'}> In der Rangliste für die anderen sichtbar sein (nur Anzahl Aufgaben, Trefferquote, Lerntage, Duellsiege)</label></section>
       <section class="card form"><h2>Rechenpapier</h2>
         <label class="tg"><input type="checkbox" id="mouse" ${st.settings.mouseInk ? 'checked' : ''}> Zeichnen mit Maus erlauben (für PCs ohne Stift)</label>
         <label>Karogröße</label><div class="seg" id="grid">${[16, 20, 24, 32].map(g => `<button data-g="${g}" class="${g === st.settings.grid ? 'on' : ''}">${g}px</button>`).join('')}</div></section>
@@ -907,6 +979,9 @@
       <section class="card" id="adminBox" hidden></section>`;
     renderAccount();
     $('#mouse').onchange = e => { st.settings.mouseInk = e.target.checked; S.save(true); };
+    $('#exd').onchange = e => { st.settings.examDate = e.target.value || null; S.save(true); AP2Toast(e.target.value ? 'Prüfungstag gespeichert – dein Lernplan ist auf der Startseite.' : 'Prüfungstag entfernt.'); };
+    $('#board').onchange = e => { st.settings.hideBoard = !e.target.checked; S.save(true); };
+    renderPush();
     $('#grid').onclick = e => { const g = e.target.dataset.g; if (!g) return; st.settings.grid = +g; S.save(true); route(); };
     $('#exp').onclick = () => download(`ap2-sicherung-${new Date().toISOString().slice(0, 10)}.json`, S.exportJSON(), 'application/json');
     $('#paste').onclick = async () => { const v = await ask({ title: 'Sicherung einfügen', text: 'Füge den kopierten Sicherungstext ein.', area: true, rows: 8, buttons: [['Importieren', true, 'primary'], ['Abbrechen', false, 'ghost']] }); if (!v) return; try { S.importJSON(v); st = S.get(); AP2Toast('Sicherung importiert.'); route(); } catch (err) { AP2Toast('Import fehlgeschlagen: ' + err.message); } };
