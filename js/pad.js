@@ -52,11 +52,12 @@
         <div class="seg selbar" hidden><button data-a="seldel">Auswahl löschen</button></div>
         <span class="pgno"></span>
       </div>
-      <div class="pad-wrap"><canvas class="base"></canvas><canvas class="live"></canvas>
-        <div class="pad-hint">Stift schreibt · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig · am Strichende halten = gerade Linie</div></div>`;
+      <div class="pad-wrap"><canvas class="base"></canvas><canvas class="live"></canvas><canvas class="tip"></canvas>
+        <div class="pad-hint">Stift schreibt · Handballen darf aufliegen · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig · am Strichende halten = gerade Linie</div></div>`;
     const wrap = host.querySelector('.pad-wrap');
     const cv = host.querySelector('canvas.base'), lv = host.querySelector('canvas.live');
-    const ctx = cv.getContext('2d'), lctx = lv.getContext('2d');
+    const tv = host.querySelector('canvas.tip'); tv.style.pointerEvents = 'none';
+    const ctx = cv.getContext('2d'), lctx = lv.getContext('2d', { desynchronized: true }), tctx = tv.getContext('2d', { desynchronized: true });
     const bar = host.querySelector('.pad-bar');
 
     const pageTop = i => i * (PH + GAP);
@@ -72,7 +73,7 @@
     function resize() {
       const r = wrap.getBoundingClientRect(); dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       W = r.width; H = r.height; if (!W || !H) return;
-      for (const c of [cv, lv]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); c.style.width = W + 'px'; c.style.height = H + 'px'; }
+      for (const c of [cv, lv, tv]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); c.style.width = W + 'px'; c.style.height = H + 'px'; }
       if (!fitted) { let has = false; try { has = !!localStorage.getItem('ap2.padView'); } catch (_) {} if (!has) Z = Math.max(0.4, Math.min(2, (W - 16) / PW)); fitted = true; }
       clampView(); render();
     }
@@ -126,7 +127,8 @@
       host.querySelector('.selbar').hidden = !(sel && sel.idx.length);
     }
     let raf = 0; const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); };
-    function clearLive() { lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, lv.width, lv.height); }
+    function clearTip() { tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tv.width, tv.height); }
+    function clearLive() { lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, lv.width, lv.height); clearTip(); }
     function saveView() { try { localStorage.setItem('ap2.padView', JSON.stringify({ z: Z })); } catch (_) {} }
 
     const snap = () => JSON.stringify(pages);
@@ -144,15 +146,37 @@
     }
     function inPoly(x, y, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if (((a[1] > y) !== (b[1] > y)) && (x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0])) c = !c; } return c; }
     function bbox(pg, idx) { let b = [1e9, 1e9, -1e9, -1e9]; idx.forEach(k => pages[pg][k].p.forEach(q => { b = [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])]; })); return b; }
+    // Live-Strich inkrementell zeichnen (nur neue Segmente) – geringere Verzögerung als komplettes Neuzeichnen
+    function drawSeg(c, s, i, dy) {
+      const p = s.p, a = p[i - 1], b = p[i], n = p[i + 1];
+      const m1 = i === 1 ? a : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m2 = n ? [(b[0] + n[0]) / 2, (b[1] + n[1]) / 2] : b;
+      c.strokeStyle = s.c; c.lineCap = 'round'; c.lineJoin = 'round'; c.globalAlpha = 1;
+      c.lineWidth = s.w * (.55 + (b[2] || .5) * .9);
+      c.beginPath(); c.moveTo(m1[0], m1[1] + dy); c.quadraticCurveTo(b[0], b[1] + dy, m2[0], m2[1] + dy); c.stroke();
+    }
+    function drawLiveInc() {
+      if (!cur || cur.mode !== 'draw' || cur.straight || cur.s.t === 'marker' || cur.full) return drawLive();
+      view(lctx); const top = pageTop(cur.pg); const p = cur.s.p;
+      for (let i = Math.max(1, cur.drawn || 1); i < p.length - 1; i++) drawSeg(lctx, cur.s, i, top);
+      cur.drawn = Math.max(1, p.length - 1);
+      // offenes Strichende (und ggf. Vorhersage) auf eigener Ebene – wird bei jedem Ereignis ersetzt
+      clearTip(); if (p.length < 2 && !pred.length) return; view(tctx);
+      const l = p[p.length - 1], b = p.length > 1 ? p[p.length - 2] : l, m = p.length > 2 ? [(b[0] + l[0]) / 2, (b[1] + l[1]) / 2] : b;
+      tctx.strokeStyle = cur.s.c; tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.lineWidth = cur.s.w * (.55 + (l[2] || .5) * .9);
+      tctx.beginPath(); tctx.moveTo(m[0], m[1] + top); tctx.lineTo(l[0], l[1] + top); pred.forEach(q => tctx.lineTo(q[0], q[1] + top)); tctx.stroke();
+    }
+    let pred = [];
     function drawLive() {
       clearLive(); if (!cur) return; view(lctx);
       const top = pageTop(cur.pg);
       if (cur.mode === 'lasso') { lctx.setLineDash([6 / Z, 4 / Z]); lctx.strokeStyle = '#1f5eff'; lctx.lineWidth = 1.5 / Z; lctx.beginPath(); cur.p.forEach((q, i) => i ? lctx.lineTo(q[0], q[1] + top) : lctx.moveTo(q[0], q[1] + top)); lctx.closePath(); lctx.stroke(); lctx.setLineDash([]); return; }
       strokePath(lctx, cur.s, top);
     }
+    let penAt = 0, penDown = false, penSeen = false;   // Handballen-Erkennung: Stiftzeitpunkt merken
     lv.addEventListener('pointerdown', e => {
       if (!isDraw(e)) return;
       e.preventDefault(); try { lv.setPointerCapture(e.pointerId); } catch (_) {}
+      if (e.pointerType === 'pen') { penDown = true; penSeen = true; penAt = performance.now(); palmGuard(); }
       cancelAnimationFrame(inertia);
       const [x, y, pr, pg] = local(e); const before = snap();
       if (tool === 'erase') { cur = { mode: 'erase', pg, before }; cur.changed = eraseAt(x, y, pg); return; }
@@ -173,13 +197,19 @@
       if (cur.straight) { const [x, y, pr] = local(e); cur.s.p = [cur.s.p[0], [x, y, pr]]; drawLive(); return; }
       let moved = false;
       for (const ev of evs) { const [x, y, pr] = local(ev); const l = cur.s.p[cur.s.p.length - 1]; if (Math.hypot(x - l[0], y - l[1]) > .4 / Z) { cur.s.p.push([x, y, pr]); moved = true; } }
-      if (moved) { clearTimeout(holdT); holdT = setTimeout(straighten, 450); }
-      drawLive();
+      if (moved) { clearTimeout(holdT); holdT = setTimeout(straighten, 550); }
+      // Apple Pencil: vorhergesagte Punkte nur vorläufig mitzeichnen (fühlt sich direkter an)
+      const pe = e.getPredictedEvents ? e.getPredictedEvents() : [];
+      pred = pe.length && cur.s.t !== 'marker' ? pe.slice(-2).map(local) : [];
+      drawLiveInc();
     });
     function straighten() {
       if (!cur || cur.mode !== 'draw' || cur.s.t === 'marker') return;
       const p = cur.s.p; if (p.length < 4) return;
-      const a = p[0], b = p[p.length - 1]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 20) return;
+      const a = p[0], b = p[p.length - 1]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 40) return;
+      // nur wenn der Strich schon fast gerade war (Schrift wird nie begradigt)
+      const dev = Math.max(...p.map(q => Math.abs((b[0] - a[0]) * (a[1] - q[1]) - (a[0] - q[0]) * (b[1] - a[1])) / L));
+      if (dev > Math.max(8, L * .12)) return;
       cur.straight = true; cur.s.p = [a, b]; drawLive();
     }
     const finish = () => {
@@ -191,17 +221,22 @@
         const idx = []; pages[cur.pg].forEach((s, k) => { const inside = s.p.filter(q => inPoly(q[0], q[1], cur.p)).length; if (inside >= s.p.length * .6) idx.push(k); });
         sel = idx.length ? { pg: cur.pg, idx, box: bbox(cur.pg, idx) } : null;
       }
-      cur = null; clearLive(); schedule();
+      cur = null; pred = []; render(); clearLive();   // erst Grundebene neu, dann Live-Ebene leeren (kein Flackern)
     };
-    lv.addEventListener('pointerup', e => { if (isDraw(e)) finish(); });
-    lv.addEventListener('pointercancel', e => { if (isDraw(e)) finish(); });
+    lv.addEventListener('pointerup', e => { if (isDraw(e)) { if (e.pointerType === 'pen') { penDown = false; penAt = performance.now(); } finish(); } });
+    lv.addEventListener('pointercancel', e => { if (isDraw(e)) { if (e.pointerType === 'pen') { penDown = false; penAt = performance.now(); } finish(); } });
 
     /* ---------- Finger ---------- */
-    let tg = null, vel = [0, 0], lastT = 0, lastP = null, inertia = 0;
-    const pts = t => [...t].map(x => [x.clientX, x.clientY]);
+    let tg = null, vel = [0, 0], lastT = 0, lastP = null, inertia = 0, palm = false;
+    const pts = t => [...t].filter(x => x.touchType !== 'stylus').map(x => [x.clientX, x.clientY]);
+    const big = t => (t.radiusX || 0) > 22 || (t.radiusY || 0) > 22;            // breite Auflage = Handballen
+    const penRecent = () => penDown || performance.now() - penAt < 1200;
+    // Stift kommt, während der Handballen schon liegt: Verschieben/Zoomen rückgängig machen und Finger bis zum Abheben ignorieren
+    function palmGuard() { if (tg) { ox = tg.ox; oy = tg.oy; Z = tg.Z; clampView(); schedule(); palm = true; } tg = null; cancelAnimationFrame(inertia); }
     lv.addEventListener('touchstart', e => {
       e.preventDefault();
       if ([...e.changedTouches].some(t => t.touchType === 'stylus') || cur) return;
+      if (palm || penRecent() || [...e.touches].some(big)) { if (tg) palmGuard(); palm = true; return; }
       const p = pts(e.touches); cancelAnimationFrame(inertia); vel = [0, 0];
       const maxN = Math.max(tg ? tg.maxN : 0, p.length);
       tg = { n: p.length, start: tg ? tg.start : performance.now(), p0: p, ox, oy, Z, moved: tg ? tg.moved : false, maxN };
@@ -209,7 +244,8 @@
     }, { passive: false });
     lv.addEventListener('touchmove', e => {
       e.preventDefault();
-      if (!tg || cur) return;
+      if (!tg || cur || palm) return;
+      if ([...e.touches].some(big)) { palmGuard(); return; }
       const p = pts(e.touches); const now = performance.now();
       if (p.length === 1 && tg.n === 1) {
         const dx = p[0][0] - tg.p0[0][0], dy = p[0][1] - tg.p0[0][1];
@@ -227,10 +263,12 @@
     }, { passive: false });
     lv.addEventListener('touchend', e => {
       e.preventDefault();
+      if (palm) { if (![...e.touches].some(t => t.touchType !== 'stylus')) palm = false; tg = null; return; }
       if (!tg) return;
       if (e.touches.length === 0) {
         const dt = performance.now() - tg.start;
-        if (!tg.moved && dt < 350) { if (tg.maxN === 2) doUndo(); else if (tg.maxN === 3) doRedo(); }
+        // Tipp-Gesten nur, wenn kein Stift in der Nähe war (Handballen löst sonst „Rückgängig“ aus)
+        if (!tg.moved && dt < 300 && !penRecent() && performance.now() - penAt > 1500) { if (tg.maxN === 2) doUndo(); else if (tg.maxN === 3) doRedo(); }
         if (tg.n === 1 && tg.moved && Math.hypot(vel[0], vel[1]) > .3) {
           let [vx, vy] = vel; const step = () => { vx *= .94; vy *= .94; ox -= vx * 16 / Z; oy -= vy * 16 / Z; clampView(); render(); if (Math.hypot(vx, vy) > .02) inertia = requestAnimationFrame(step); };
           inertia = requestAnimationFrame(step);
@@ -239,7 +277,7 @@
         tg = null; lastP = null;
       } else { const p = pts(e.touches); Object.assign(tg, { n: p.length, p0: p, ox, oy, Z, d0: p.length >= 2 ? Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) : 0 }); if (p.length >= 2) { const r = lv.getBoundingClientRect(); tg.m0 = [(p[0][0] + p[1][0]) / 2 - r.left, (p[0][1] + p[1][1]) / 2 - r.top]; } lastP = null; }
     }, { passive: false });
-    lv.addEventListener('touchcancel', () => { tg = null; });
+    lv.addEventListener('touchcancel', () => { tg = null; palm = false; });
     lv.addEventListener('wheel', e => {
       e.preventDefault();
       if (e.ctrlKey) { const r = lv.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top; const wx = mx / Z + ox, wy = my / Z + oy; Z = Math.min(4, Math.max(.35, Z * Math.exp(-e.deltaY / 300))); ox = wx - mx / Z; oy = wy - my / Z; saveView(); }

@@ -87,7 +87,28 @@
   };
   // KI-Vorschlag für offene Antworten (Edge Function ai-grade; Schlüssel liegt nur auf dem Server)
   const aiGrade = payload => aiCall('ai-grade', payload);
-  const aiTutor = payload => aiCall('ai-tutor', payload);
+  // Tutor mit Streaming: onText(bisheriger Text) wird laufend aufgerufen, sobald die KI schreibt
+  async function aiTutor(payload, onText) {
+    if (!onText) return aiCall('ai-tutor', payload);
+    if (!session || !(await ensureFresh())) throw new Error('Für die KI bitte anmelden.');
+    const r = await fetch(URL_ + '/functions/v1/ai-tutor', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, payload, { stream: true })) });
+    if (!r.ok || !/event-stream/.test(r.headers.get('content-type') || '') || !r.body) { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('KI-Fehler ' + r.status)); return d; }
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '', fin = null;
+    for (;;) {
+      const { value, done } = await rd.read(); if (done) break;
+      buf += dec.decode(value, { stream: true }); let k;
+      while ((k = buf.indexOf('\n\n')) >= 0) {
+        const ev = buf.slice(0, k); buf = buf.slice(k + 2);
+        const line = ev.split('\n').find(l => l.startsWith('data:')); if (!line) continue;
+        let o; try { o = JSON.parse(line.slice(5)); } catch (_) { continue; }
+        if (o.error) throw new Error(o.error);
+        if (o.t) { text += o.t; onText(text); }
+        if (o.done) fin = o;
+      }
+    }
+    if (!text) throw new Error('KI hat keine Antwort geliefert. Bitte nochmal versuchen.');
+    return Object.assign({ text }, fin || {});
+  }
   async function aiCall(fn, payload) {
     if (!session || !(await ensureFresh())) throw new Error('Für die KI bitte anmelden.');
     const r = await fetch(URL_ + '/functions/v1/' + fn, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

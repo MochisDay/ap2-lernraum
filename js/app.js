@@ -685,8 +685,8 @@
     const T = TUTOR[t.id] = TUTOR[t.id] || { msgs: [] };
     const paint = () => {
       if (!host.isConnected) return;
-      if (T.explain) { host.innerHTML = `<div class="xpl"><div class="xpl-h"><b>🤖 So geht's richtig${T.withInk ? ' <small class="muted">· mit deinem Rechenpapier</small>' : ''}</b><button class="link" data-more>Nachfragen</button></div><div class="xpl-b">${tutorMd(T.explain)}</div><p class="muted small">KI-Erklärung – maßgeblich ist die offizielle IHK-Lösung.</p></div>`; }
-      else if (T.explBusy) host.innerHTML = `<div class="xpl"><div class="xpl-b muted"><span class="dots3"><i></i><i></i><i></i></span> KI erklärt die Lösung${T.withInk ? ' und liest dein Rechenpapier' : ''} … (ca. 10–30 s)</div></div>`;
+      if (T.explain || T.partial) { host.innerHTML = `<div class="xpl"><div class="xpl-h"><b>🤖 So geht's richtig${T.withInk ? ' <small class="muted">· mit deinem Rechenpapier</small>' : ''}</b><button class="link" data-more>Nachfragen</button></div><div class="xpl-b">${tutorMd(T.explain || T.partial)}${T.explBusy ? ' <span class="dots3"><i></i><i></i><i></i></span>' : ''}</div><p class="muted small">KI-Erklärung – maßgeblich ist die offizielle IHK-Lösung.</p></div>`; }
+      else if (T.explBusy) host.innerHTML = `<div class="xpl"><div class="xpl-b muted"><span class="dots3"><i></i><i></i><i></i></span> KI erklärt die Lösung${T.withInk ? ' und liest dein Rechenpapier' : ''} …</div></div>`;
       else if (T.explErr) host.innerHTML = `<div class="xpl"><div class="xpl-b muted">⚠️ ${esc(T.explErr)}</div><button class="btn sm ghost" data-go>Nochmal versuchen</button></div>`;
       else if (!Y || !Y.session) host.innerHTML = '';
       else host.innerHTML = '<button class="btn ghost xpl-btn" data-go>🤖 Warum ist das so? Erklären lassen</button>';
@@ -699,10 +699,10 @@
       T.explBusy = true; T.explErr = null; paint();
       try {
         const r = await Y.aiTutor({ taskId: t.id, label: `${t.periodLabel} · ${PART_SHORT[t.part]} · ${t.label}`, type: t.type === 'open' ? 'open' : 'mc', taskImage: t.image, solImage: t.type === 'open' ? t.solution.image : null,
-          action: 'explain', mode: 'full', question: '', history: [], myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) });
+          action: 'explain', mode: 'full', question: '', history: [], myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) }, txt => { T.partial = txt; paint(); });
         T.explain = r.text; T.msgs.push({ role: 'user', text: 'Lösung erklären' }, { role: 'model', text: r.text });
       } catch (e) { T.explErr = e.message; }
-      T.explBusy = false; paint();
+      T.explBusy = false; T.partial = null; paint();
     };
     paint();
     if (auto && !T.explain && !T.explBusy && !T.explErr && Y && Y.session) run();
@@ -722,7 +722,7 @@
       const md = mode();
       w.innerHTML = `<div class="tp-h"><b>🤖 KI-Tutor</b><span class="muted small">${esc(label)}</span><button class="ib" data-x aria-label="Schließen">✕</button></div>
         <div class="tp-msgs" id="tpMsgs">${st_.msgs.length ? '' : `<div class="tp-empty"><p>Frag mich alles zu dieser Aufgabe – oder tipp unten auf einen Vorschlag.</p><p class="muted small">Was du auf dem Rechenpapier geschrieben hast, sehe ich mit – frag z. B. „Wo ist mein Fehler?“</p>${md === 'hint' ? '<p class="muted small">Solange du die Aufgabe noch nicht beantwortet hast, gebe ich nur Tipps und verrate die Lösung nicht.</p>' : ''}</div>`}
-          ${st_.msgs.map(x => `<div class="tp-m ${x.role}">${x.role === 'model' ? tutorMd(x.text) : esc(x.text)}</div>`).join('')}${busy ? '<div class="tp-m model busy"><span class="dots3"><i></i><i></i><i></i></span> denkt nach …</div>' : ''}</div>
+          ${st_.msgs.map(x => `<div class="tp-m ${x.role} done">${x.role === 'model' ? tutorMd(x.text) : esc(x.text)}</div>`).join('')}${busy ? (st_.partial ? `<div class="tp-m model">${tutorMd(st_.partial)} <span class="dots3"><i></i><i></i><i></i></span></div>` : '<div class="tp-m model busy"><span class="dots3"><i></i><i></i><i></i></span> denkt nach …</div>') : ''}</div>
         <div class="tp-chips">${chipsFor(md).map(([a, l]) => `<button class="chip" data-a="${a}" ${busy ? 'disabled' : ''}>${l}</button>`).join('')}</div>
         <form class="tp-in" id="tpForm"><textarea class="inp" id="tpQ" rows="1" placeholder="Frage stellen, z. B. „Warum nimmt man hier cos φ?“" ${busy ? 'disabled' : ''}></textarea><button class="btn primary" ${busy ? 'disabled' : ''}>Senden</button></form>
         <p class="tp-foot muted small">KI kann sich irren – maßgeblich ist die offizielle IHK-Lösung.</p>`;
@@ -740,9 +740,13 @@
       st_.msgs.push({ role: 'user', text: shown }); draw(true);
       try {
         const r = await Y.aiTutor({ taskId: t.id, label, type: t.type === 'open' ? 'open' : 'mc', taskImage: t.image, solImage: t.type === 'open' ? t.solution.image : null,
-          action, mode: mode(), question: question || '', history, myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) });
+          action, mode: mode(), question: question || '', history, myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) }, txt => {
+            st_.partial = txt; if (!w.isConnected) return; const box = $('#tpMsgs', w); const last = box && box.lastElementChild;
+            if (last && last.classList.contains('model') && !last.classList.contains('done')) { last.classList.remove('busy'); last.innerHTML = tutorMd(txt) + ' <span class="dots3"><i></i><i></i><i></i></span>'; const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80; if (near) box.scrollTop = box.scrollHeight; }
+          });
         st_.msgs.push({ role: 'model', text: r.text });
       } catch (e) { st_.msgs.push({ role: 'model', text: '⚠️ ' + e.message }); }
+      st_.partial = null;
       if (w.isConnected) draw(false);
     };
     draw(false);
