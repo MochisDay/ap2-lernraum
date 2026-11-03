@@ -132,7 +132,7 @@
   const SPECIAL = { '%': ['', 0.01], '‰': ['', 0.001], '°C': ['K', 1], '°': ['°', 1], 'grd': ['°', 1], 'min': ['s', 60], h: ['s', 3600], '1/min': ['1/min', 1], 'min⁻¹': ['1/min', 1], 'min-1': ['1/min', 1], 'min^-1': ['1/min', 1], 'U/min': ['1/min', 1],
     'mm²': ['m²', 1e-6], 'mm2': ['m²', 1e-6], 'mm^2': ['m²', 1e-6], 'cm²': ['m²', 1e-4], 'cm2': ['m²', 1e-4], 'm2': ['m²', 1], 'EUR': ['EUR', 1], '€': ['EUR', 1], 'Euro': ['EUR', 1], 'kWh': ['Wh', 1e3], 'MWh': ['Wh', 1e6],
     'Ws': ['J', 1], 'kvar': ['var', 1e3], 'Mvar': ['var', 1e6], 'kΩ': ['Ω', 1e3], 'MΩ': ['Ω', 1e6], 'mΩ': ['Ω', 1e-3], 'Ohm': ['Ω', 1], 'mm': ['m', 1e-3], 'km': ['m', 1e3], 'Nm': ['Nm', 1], 'N m': ['Nm', 1], 'N·m': ['Nm', 1], 'kNm': ['Nm', 1e3],
-    'mbar': ['bar', 1e-3], 'l/min': ['l/min', 1], 'L/min': ['l/min', 1], 'lm/W': ['lm/W', 1], 'l/h': ['l/min', 1 / 60], '': ['', 1], 'K/W': ['K/W', 1], 'kg': ['g', 1e3], 'V/m': ['V/m', 1], 'A/mm²': ['A/m²', 1e6] };
+    'mbar': ['bar', 1e-3], 'l/min': ['l/min', 1], 'Monate': ['Monat', 1], 'Monat': ['Monat', 1], 'EUR/kWh': ['EUR/kWh', 1], '€/kWh': ['EUR/kWh', 1], 'ct/kWh': ['EUR/kWh', 0.01], 'Jahre': ['Jahr', 1], 'Jahr': ['Jahr', 1], 'a': ['Jahr', 1], 'L/min': ['l/min', 1], 'lm/W': ['lm/W', 1], 'l/h': ['l/min', 1 / 60], '': ['', 1], 'K/W': ['K/W', 1], 'kg': ['g', 1e3], 'V/m': ['V/m', 1], 'A/mm²': ['A/m²', 1e6] };
   function unitInfo(u) {
     u = String(u || '').trim().replace(/\s+/g, ' ').replace(/^in /, '');
     if (u in SPECIAL) return { base: SPECIAL[u][0], f: SPECIAL[u][1] };
