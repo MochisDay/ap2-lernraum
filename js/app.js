@@ -35,6 +35,12 @@
     });
   }
   window.AP2Ask = ask;
+  const APPV = 25;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  document.addEventListener('click', async e => {
+    const d = e.target.closest('[data-sdel]'); if (!d) return;
+    if (!(await ask({ title: 'Dieses Training löschen?', text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
+    delete st.sessions[d.dataset.sdel]; S.save(true); AP2Toast('Training gelöscht.'); go('#/');
+  });
   document.addEventListener('click', e => { const b = e.target.closest('[data-back]'); if (b) { e.preventDefault(); go(b.dataset.back); } });
 
   window.AP2Toast = msg => { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2600); };
@@ -88,7 +94,16 @@
       if (!LOGIN_REQUIRED) AP2Sync.init();
     }
     renderFoot(); route();
-    if (!PACK && 'serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if (!PACK && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      // Updates sofort übernehmen: neue Version laden, sobald der neue Service Worker übernimmt (auch in der installierten iPad-App)
+      const hadCtl = !!navigator.serviceWorker.controller; let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl || reloading) return; reloading = true; try { S.save(true); } catch (_) {} location.reload(); });
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        const check = () => reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+        setInterval(check, 30 * 60e3);
+      }).catch(() => {});
+    }
   }
 
   function renderFoot() {
@@ -314,7 +329,7 @@
         <span class="muted small">Beleg: IHK-Lösungsschablone ${t.solution.template}, Lösungsheft S. ${t.solution.page}</span>
         <button class="link" id="showKey">Lösungsschablone ansehen</button></div>`;
     }
-    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
       <span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     const tOpts = { tutor: () => phase === 'done' ? 'full' : 'hint', myAnswer: () => it.tries.length ? 'Antwort ' + it.tries.join(', dann ') : '' };
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card">${msg}<p class="q">Wähle die richtige Antwort:</p>${optButtons(null, dis, cls)}
@@ -437,7 +452,7 @@
   function openSession(m, s, it, t) {
     it.rec = it.rec || { ans: null, self: {}, phase: it.result ? 'done' : 'ask' };
     const oOpts = { tutor: () => it.rec.phase === 'ask' ? 'hint' : 'full', myAnswer: () => openAnswerText(t, it.rec) };
-    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div><span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div><span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card openc"><div id="openBox"></div><div class="actions">${it.result ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button>` : ''}</div></div>`, oOpts)}</div>`;
     wireFrame(t, m, oOpts); hydrate(m);
     openWidget(m, t, it.rec, (rec, gr) => { if (gr) { it.result = recordOpen(t, rec, gr, 'training'); } s.updated = Date.now(); S.save(true); if (gr) route(); });
@@ -1007,7 +1022,8 @@
       <section class="card form" id="acct"></section>
       <section class="card danger-zone"><h2>Lernstand zurücksetzen</h2><p class="muted">Setzt alles auf 0: bearbeitete Aufgaben, Wiederholungen, Statistik, angefangene Trainings und Prüfungen, Rechenpapier. Einstellungen, Prüfungstag und Konto bleiben. Vorher wird automatisch eine Sicherung angelegt, die du unter „Sicherung“ wiederherstellen kannst.</p>
         <div class="actions"><button class="btn danger" id="resetAll">Lernstand auf 0 setzen</button></div></section>
-      <section class="card" id="adminBox" hidden></section>`;
+      <section class="card" id="adminBox" hidden></section>
+      <p class="muted small" style="text-align:center">App-Version ${APPV}</p>`;
     renderAccount();
     $('#resetAll').onclick = async () => {
       const v = await ask({ title: 'Wirklich alles auf 0 setzen?', text: 'Zum Bestätigen <b>null</b> eintippen.', input: 'text', buttons: [['Auf 0 setzen', true, 'danger'], ['Abbrechen', false, 'ghost']] });

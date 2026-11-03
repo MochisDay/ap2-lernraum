@@ -464,3 +464,4 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .go-bar{position:sticky;bottom:0;margin:18px -22px -22px;padding:14px 22px calc(14px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);border-radius:0 0 var(--r-xl) var(--r-xl)}
 .go-bar .btn{width:100%}
 @media (max-width:600px){.go-bar{margin:18px -18px -18px;padding:12px 18px}}
+.sess-top .sess-del{order:9;margin-left:auto;color:var(--muted);min-height:40px;width:42px;justify-content:center;border-radius:99px}.sess-top .sess-del:hover{color:var(--bad);background:var(--badBg)}
