@@ -470,3 +470,23 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .mark-ib.on{background:var(--accentSoft);color:var(--ink)} .mark-ib.on .ic{fill:var(--accent);stroke:var(--accent)}
 .mark-chip{margin-bottom:10px} .mark-chip.on{background:var(--accentSoft);border-color:var(--accent);color:var(--ink)} .mark-chip.on .ic{fill:var(--accent);stroke:var(--accent)}
 .res.mk{color:var(--warn);font-weight:600}
+
+/* Kacheln: Titel immer auf gleicher Höhe (oben), Spalten gleich breit */
+.starts{grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr))}
+.start{justify-content:flex-start;gap:18px}
+.start b{margin-bottom:3px}
+@media (min-width:701px) and (max-width:1000px){.starts{grid-template-columns:repeat(2,minmax(0,1fr))} .start{min-height:0;flex-direction:row;align-items:center;gap:16px}}
+/* Hover-Farbe nur mit Maus – auf dem iPad bleibt sonst der zuletzt angetippte Tab hell */
+@media (hover:none){#nav a:hover{background:none;color:var(--muted)} #nav a.on:hover{color:var(--ink)} .start:hover{transform:none;box-shadow:var(--shadow)} a.row:hover{background:var(--surface2)}}
+@media (hover:none) and (min-width:1001px){#nav a:hover{color:var(--sideInk)} #nav a.on:hover{color:var(--sideHi)}}
+/* Zweitknopf im Countdown-Kasten deckend, damit das Punkteraster nicht durchscheint */
+.meter .btn:not(.primary){background:#3a3c3f} .meter .btn:not(.primary):hover{background:#45474b}
+/* Handy: große Training-Kachel, darunter die anderen als kompakte Zeilen */
+@media (max-width:700px){
+  .starts{grid-template-columns:1fr;gap:8px}
+  .start.main{grid-column:auto}
+  .starts .start:not(.main){flex-direction:row;align-items:center;gap:14px;padding:12px 14px;min-height:0;border-radius:18px}
+  .starts .start:not(.main) .ic{width:42px;height:42px;padding:10px;border-radius:12px}
+  .starts .start:not(.main) b{font-size:16px;margin:0}
+  .starts .start:not(.main) span{font-size:13px}
+}
