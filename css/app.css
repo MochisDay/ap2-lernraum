@@ -490,3 +490,17 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
   .starts .start:not(.main) b{font-size:16px;margin:0}
   .starts .start:not(.main) span{font-size:13px}
 }
+
+/* Schreiben auf der Originalaufgabe */
+.anno-cv{position:absolute;pointer-events:none;touch-action:pan-x pan-y;z-index:2}
+.anno-cv.on{pointer-events:auto;cursor:crosshair}
+.anno-ib.has{box-shadow:inset 0 -2px 0 var(--accent)}
+.anno-ib.on{background:var(--accent);color:var(--accentInk)}
+.anno-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--accentSoft)}
+.anno-hint{font-size:12.5px;color:var(--ink2);margin-right:auto;font-weight:500}
+.anno-bar .sw{width:30px;height:30px;border-radius:50%;border:0;background:var(--surface);position:relative;cursor:pointer;padding:0}
+.anno-bar .sw::after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--c)}
+.anno-bar .sw.on::after{inset:5px;box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--c)}
+.anno-bar .ib{background:var(--surface)} .anno-bar .ib.on{background:var(--ink);color:var(--surface)}
+.anno-bar .done{background:var(--accent);color:var(--accentInk)}
+@media (max-width:600px){.anno-hint{flex-basis:100%}}

@@ -9,7 +9,7 @@
   const OPEN_PARTS = ['SE_B', 'FUSA_B', 'WISO_U'];
   const MC_PARTS = ['SE_A', 'FUSA_A', 'WISO'];
   const NUM = ['①', '②', '③', '④', '⑤'];
-  let REG, DOCS, TASKS = {}, st, pad = null, tick = null, ROUTE = '#/', IMGZ = 1;
+  let REG, DOCS, TASKS = {}, st, pad = null, anno = null, tick = null, ROUTE = '#/', IMGZ = 1;
   function go(h) { ROUTE = h; try { if (window.top === window && location.hash !== h) history.replaceState(null, '', h); } catch (_) {} route(); }
   /* Bilder: lokal direkt als Datei, gehostet aus gepackten Dateien (data/pack) */
   let PACK = null; const packCache = new Map(); const urlCache = new Map();
@@ -36,8 +36,15 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 30;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 31;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
+  const hasAnno = id => !!(st.anno && st.anno[id] && st.anno[id].length);
+  const hasWork = id => hasAnno(id) || (st.ink[id] || []).some(pg => pg && pg.length);
+  // Für die KI: Rechenpapier, und wenn auf der Aufgabe geschrieben wurde, die Aufgabe mit Eintragungen obendrauf
+  async function inkFor(t) {
+    const ink = AP2Pad.exportInk(st.ink[t.id]); if (!hasAnno(t.id)) return ink;
+    try { const im = $('#origImg'); const src = im && im.src && !im.dataset.src ? im.src : await imgURL(t.image); return await AP2Anno.exportWith(src, st.anno[t.id], ink); } catch (_) { return ink; }
+  }
   const isMarked = id => !!(st.marked && st.marked[id]);
   function toggleMark(id) {
     st.marked = st.marked || {};
@@ -133,6 +140,7 @@
 
   function route() {
     if (pad) { pad.destroy(); pad = null; }
+    if (anno) { anno.destroy(); anno = null; }
     $$('#windows .win, #windows .tutor-panel').forEach(w => w.remove());
     clearInterval(tick); tick = null;
     const h = ROUTE.replace(/^#\/?/, '');
@@ -303,7 +311,8 @@
     return `<div class="work" id="work">
       <section class="orig"><div class="orig-bar"><span class="tag">${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${esc(t.label)}${t.mandatory ? ' · <b>nicht abwählbar</b>' : ''}</span>
         <div class="tools"><button class="ib" data-z="-">−</button><button class="ib" data-z="0">Breite</button><button class="ib" data-z="+">+</button>
-        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen"><svg class="ic"><use href="#i-spark"/></svg> Tutor</button>' : ''}<button class="ib mark-ib ${isMarked(t.id) ? 'on' : ''}" data-mark="${t.id}" title="Aufgabe fürs Fehlerheft merken"><svg class="ic"><use href="#i-star"/></svg> <span>${isMarked(t.id) ? 'Gemerkt' : 'Merken'}</span></button><button class="ib" id="pinBook" title="Heftseiten anheften"><svg class="ic"><use href="#i-clip"/></svg> Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden"><svg class="ic"><use href="#i-flag"/></svg> </button>'}</div></div>
+        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen"><svg class="ic"><use href="#i-spark"/></svg> Tutor</button>' : ''}<button class="ib mark-ib ${isMarked(t.id) ? 'on' : ''}" data-mark="${t.id}" title="Aufgabe fürs Fehlerheft merken"><svg class="ic"><use href="#i-star"/></svg> <span>${isMarked(t.id) ? 'Gemerkt' : 'Merken'}</span></button><button class="ib anno-ib ${hasAnno(t.id) ? 'has' : ''}" id="annoBtn" title="Direkt auf der Aufgabe schreiben (z. B. Schaltbild ergänzen)"><svg class="ic"><use href="#i-pen"/></svg> <span>Schreiben</span></button><button class="ib" id="pinBook" title="Heftseiten anheften"><svg class="ic"><use href="#i-clip"/></svg> Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden"><svg class="ic"><use href="#i-flag"/></svg> </button>'}</div></div>
+        <div class="anno-bar" id="annoBar" hidden><span class="anno-hint">Mit dem Stift auf die Aufgabe schreiben · Finger scrollen</span>${AP2Anno.COLORS.map((c, i) => `<button class="sw ${i ? '' : 'on'}" data-ac="${c}" style="--c:${c}" aria-label="Farbe ${i + 1}"></button>`).join('')}<button class="ib" data-at="erase">Radierer</button><button class="ib" data-at="finger" title="Mit dem Finger zeichnen (ohne Stift)">Finger</button><button class="ib" data-at="undo" aria-label="Rückgängig">↶</button><button class="ib" data-at="clear">Löschen</button><button class="ib done" data-at="done">Fertig</button></div>
         <div class="orig-scroll"><img id="origImg" data-src="${t.image}" ${t.imageSize ? `width="${t.imageSize[0]}" height="${t.imageSize[1]}" style="aspect-ratio:${t.imageSize[0]}/${t.imageSize[1]}"` : ""} alt="Originalaufgabe ${esc(t.id)}" draggable="false"></div></section>
       <div class="split" id="split" title="Ziehen zum Ändern der Aufteilung"></div>
       <section class="side">${rightTop}<div class="pad" id="pad"></div></section></div>`;
@@ -325,6 +334,21 @@
     };
     $('#pinBook').onclick = () => openBook(t.source.docId, t.source.page);
     const rep = $('#report'); if (rep) rep.onclick = () => report(t);
+    anno = AP2Anno.attach($('.orig-scroll', m), img, { strokes: (st.anno || {})[t.id], onChange: s => { st.anno = st.anno || {}; if (s.length) st.anno[t.id] = s; else delete st.anno[t.id]; S.save(); $('#annoBtn', m).classList.toggle('has', s.length > 0); } });
+    { const ab = $('#annoBar', m), bt = $('#annoBtn', m);
+      const setOn = v => { anno.setMode(v); ab.hidden = !v; bt.classList.toggle('on', v); };
+      bt.onclick = () => setOn(!anno.isOn());
+      ab.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.ac) { anno.setColor(b.dataset.ac); $$('[data-ac],[data-at="erase"]', ab).forEach(x => x.classList.toggle('on', x === b)); return; }
+        const a = b.dataset.at;
+        if (a === 'erase') { anno.setTool('erase'); $$('[data-ac],[data-at="erase"]', ab).forEach(x => x.classList.toggle('on', x === b)); }
+        else if (a === 'finger') { const v = !b.classList.contains('on'); b.classList.toggle('on', v); anno.setFinger(v); AP2Toast(v ? 'Finger zeichnet jetzt – zum Scrollen „Finger“ wieder ausschalten.' : 'Finger scrollt wieder.'); }
+        else if (a === 'undo') anno.undo();
+        else if (a === 'clear') { if (anno.count()) ask({ title: 'Alle Eintragungen auf dieser Aufgabe löschen?', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }).then(v => { if (v) anno.clear(); }); }
+        else if (a === 'done') setOn(false);
+      });
+    }
     pad = AP2Pad.createPad($('#pad'), { pages: st.ink[t.id], grid: st.settings.grid, allowMouse: st.settings.mouseInk, onChange: p => { st.ink[t.id] = p; S.save(); } });
   }
   async function report(t) {
@@ -450,7 +474,7 @@
     const render = () => {
       const graded = rec.phase !== 'ask' ? gradeOpen(t, rec.ans, rec.self) : null;
       const selfSubs = t.subtasks.filter(sb => sb.check.kind !== 'number');
-      const hasInk = (st.ink[t.id] || []).some(pg => pg && pg.length);
+      const hasInk = hasWork(t.id);
       const canAI = graded && rec.phase === 'check' && window.AP2Sync && AP2Sync.session && t.solution.image && selfSubs.length && (hasInk || selfSubs.some(sb => ((rec.ans || {})[sb.id] || {}).text && rec.ans[sb.id].text.trim()));
       box.innerHTML = `${t.pointsEstimated ? '<p class="muted small">ℹ️ Punkteverteilung geschätzt – das Lösungsheft nennt nur die Gesamtpunktzahl.</p>' : ''}${openPanelHTML(t, rec.ans, graded && graded.g, rec.ai)}
         ${canAI ? `<div class="actions wrap"><button class="btn ghost" id="aiBtn">${rec.ai ? '<svg class="ic"><use href="#i-spark"/></svg> KI erneut fragen' : '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'}</button>${rec.ai ? '<button class="btn ghost" id="aiAll">Alle KI-Punkte übernehmen</button>' : ''}${rec.ai && rec.aiRead ? `<div class="airead"><b><svg class="ic"><use href="#i-pen"/></svg> Das hat die KI auf deinem Rechenpapier gelesen:</b><span>${esc(rec.aiRead)}</span><small class="muted">Falsch gelesen? Dann deutlicher schreiben oder die Antwort ins Feld tippen.</small></div>` : ''}<span class="muted small" id="aiMsg">Vergleicht deine Antworten${hasInk ? ' und dein Rechenpapier' : ''} mit der Musterlösung. Nur ein Vorschlag – du entscheidest.</span></div>` : ''}
@@ -470,7 +494,7 @@
         try {
           const r = await AP2Sync.aiGrade({ taskId: t.id, label: `${t.periodLabel} ${PART_SHORT[t.part]} ${t.label}`, taskImage: t.image, solImage: t.solution.image,
             subtasks: selfSubs.map(sb => ({ id: sb.id, label: sb.label, points: sb.points, solutionText: sb.solutionText || '' })),
-            answers: Object.fromEntries(selfSubs.map(sb => [sb.id, ((rec.ans || {})[sb.id] || {}).text || ''])), inkImage: AP2Pad.exportInk(st.ink[t.id]) });
+            answers: Object.fromEntries(selfSubs.map(sb => [sb.id, ((rec.ans || {})[sb.id] || {}).text || ''])), inkImage: await inkFor(t) });
           rec.ai = {}; r.results.forEach(x => rec.ai[x.id] = { points: x.points, reason: x.reason }); rec.aiModel = r.model; rec.aiRead = r.transcript || '';
           onFinish(rec, null); render(); AP2Toast(`KI-Vorschlag da – heute noch ${Math.max(0, r.remaining)} Anfragen.`);
         } catch (e) { AP2Toast(e.message); ab.disabled = false; ab.innerHTML = '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'; }
@@ -823,11 +847,11 @@
     };
     const run = async () => {
       if (!Y || !Y.session || T.explBusy) return;
-      T.withInk = (st.ink[t.id] || []).some(pg => pg && pg.length);
+      T.withInk = hasWork(t.id);
       T.explBusy = true; T.explErr = null; paint();
       try {
         const r = await Y.aiTutor({ taskId: t.id, label: `${t.periodLabel} · ${PART_SHORT[t.part]} · ${t.label}`, type: t.type === 'open' ? 'open' : 'mc', taskImage: t.image, solImage: t.type === 'open' ? t.solution.image : null,
-          action: 'explain', mode: 'full', question: '', history: [], myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) }, txt => { T.partial = txt; paint(); });
+          action: 'explain', mode: 'full', question: '', history: [], myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: await inkFor(t) }, txt => { T.partial = txt; paint(); });
         T.explain = r.text; T.msgs.push({ role: 'user', text: 'Lösung erklären' }, { role: 'model', text: r.text });
       } catch (e) { T.explErr = e.message; }
       T.explBusy = false; T.partial = null; paint();
@@ -845,7 +869,7 @@
     const label = `${t.periodLabel} · ${PART_SHORT[t.part]} · ${t.label}`;
     const chipsFor = md => (md === 'hint'
       ? [['hint', '<svg class="ic"><use href="#i-bulb"/></svg> Tipp geben'], ['basics', '<svg class="ic"><use href="#i-book"/></svg> Grundlagen erklären']]
-      : [['explain', '<svg class="ic"><use href="#i-check"/></svg> Lösung erklären'], ...(((st.ink[t.id] || []).some(pg => pg && pg.length)) ? [['check', '<svg class="ic"><use href="#i-search"/></svg> Meine Rechnung prüfen']] : []), ['basics', '<svg class="ic"><use href="#i-book"/></svg> Grundlagen erklären'], ['similar', '<svg class="ic"><use href="#i-repeat"/></svg> Ähnliche Übung'], ['hint', '<svg class="ic"><use href="#i-bulb"/></svg> Tipp']]);
+      : [['explain', '<svg class="ic"><use href="#i-check"/></svg> Lösung erklären'], ...(hasWork(t.id) ? [['check', '<svg class="ic"><use href="#i-search"/></svg> Meine Rechnung prüfen']] : []), ['basics', '<svg class="ic"><use href="#i-book"/></svg> Grundlagen erklären'], ['similar', '<svg class="ic"><use href="#i-repeat"/></svg> Ähnliche Übung'], ['hint', '<svg class="ic"><use href="#i-bulb"/></svg> Tipp']]);
     const draw = busy => {
       const md = mode();
       w.innerHTML = `<div class="tp-h"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Tutor</b><span class="muted small">${esc(label)}</span><button class="ib" data-x aria-label="Schließen">✕</button></div>
@@ -868,7 +892,7 @@
       st_.msgs.push({ role: 'user', text: shown }); draw(true);
       try {
         const r = await Y.aiTutor({ taskId: t.id, label, type: t.type === 'open' ? 'open' : 'mc', taskImage: t.image, solImage: t.type === 'open' ? t.solution.image : null,
-          action, mode: mode(), question: question || '', history, myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: AP2Pad.exportInk(st.ink[t.id]) }, txt => {
+          action, mode: mode(), question: question || '', history, myAnswer: opts && opts.myAnswer ? opts.myAnswer() : '', inkImage: await inkFor(t) }, txt => {
             st_.partial = txt; if (!w.isConnected) return; const box = $('#tpMsgs', w); const last = box && box.lastElementChild;
             if (last && last.classList.contains('model') && !last.classList.contains('done')) { last.classList.remove('busy'); last.innerHTML = tutorMd(txt) + ' <span class="dots3"><i></i><i></i><i></i></span>'; const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80; if (near) box.scrollTop = box.scrollHeight; }
           });
@@ -969,7 +993,7 @@
     p.elapsed = p.elapsed || 0; // Zeit zählt nur, solange das Duell offen ist (Pause = Uhr steht)
     const draw = () => {
       if (ROUTE !== '#/duel/' + id) return;
-      const t = TASKS[d.task_ids[p.cur]]; if (pad) { pad.destroy(); pad = null; }
+      const t = TASKS[d.task_ids[p.cur]]; if (pad) { pad.destroy(); pad = null; } if (anno) { anno.destroy(); anno = null; }
       m.innerHTML = `<div class="task-page exam-mode"><div class="exam-bar"><button class="back" id="dPause"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b><svg class="ic"><use href="#i-duel"/></svg> Duell gegen ${esc(d.opp_name)}</b></div><span class="timer big" id="timer"></span>
         <span class="muted">${p.answers.filter(Boolean).length}/${p.answers.length} beantwortet</span><div class="eb-r"><button class="btn sm primary" id="dSub">Abgeben</button></div></div>
         <div class="dots duel-dots">${p.answers.map((a, i) => `<button class="${a ? 'ans' : ''} ${i === p.cur ? 'cur' : ''}" data-go="${i}">${i + 1}</button>`).join('')}</div>
@@ -1086,7 +1110,7 @@
       if (v === false || v == null) return;
       if (String(v).trim().toLowerCase() !== 'null' && String(v).trim() !== '0') return AP2Toast('Nicht zurückgesetzt – bitte „null“ eintippen.');
       S.backup('vor-zuruecksetzen');
-      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, open: {}, ink: {}, duelPlay: {} });
+      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, open: {}, ink: {}, anno: {}, duelPlay: {} });
       for (const k in TUTOR) delete TUTOR[k];
       S.save(true); AP2Toast('Lernstand ist auf 0. Die Sicherung davor findest du unter „Sicherung“.'); go('#/');
     };
