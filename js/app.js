@@ -92,7 +92,7 @@
 
   function renderFoot() {
     const g = gradable().length;
-    $('#sideFoot').innerHTML = `<div class="pill ok">${g} bewertbare Aufgaben</div><div class="muted small">Register v${REG.version} · ${REG.generated}</div>${syncBadge()}`;
+    $('#sideFoot').innerHTML = `${syncBadge()}<div class="small">${g} Aufgaben · Stand ${REG.generated}</div>`;
   }
   function syncBadge() {
     const Y = window.AP2Sync; if (!Y) return '';
@@ -129,10 +129,14 @@
     const exDone = Object.values(st.exams).filter(e => e.submitted).sort((a, b) => b.submitted - a.submitted).slice(0, 5);
     const bx = Object.values(st.bexams || {}); const bOpen = bx.filter(e => !e.result).sort((a, b) => b.started - a.started); const bDone = bx.filter(e => e.result).sort((a, b) => b.result.at - a.result.at).slice(0, 5);
     m.innerHTML = `
-      <header class="hero"><div><h1>Hallo! Bereit für die AP2?</h1><p>${all.length} Originalaufgaben aus ${periods().length} Prüfungsterminen sind fachlich belegt und bewertbar.</p></div>
-        <div class="hero-cta"><a class="btn primary lg" href="#/training">⚡ Schnelltraining starten</a><a class="btn ghost" href="#/exams">Originalprüfung</a></div></header>
+      <header class="home-h"><div><h1>${greet()}</h1><p>${all.length} Originalaufgaben aus ${periods().length} Prüfungen, alle mit offizieller IHK-Lösung.</p></div></header>
       <div id="duelHint"></div>
       ${planCard()}
+      <nav class="starts">
+        <a class="start main" href="#/training">${ic('bolt')}<div><b>Schnelltraining</b><span>Schwächen, Neues und Wiederholungen gemischt</span></div></a>
+        <a class="start" href="#/exams">${ic('timer')}<div><b>Originalprüfung</b><span>Ganze Prüfung mit Zeit</span></div></a>
+        <a class="start" href="#/duels">${ic('duel')}<div><b>Duell</b><span>Gleiche Aufgaben, wer ist besser?</span></div></a>
+      </nav>
       <section class="kpis">
         ${kpi('Bearbeitet', `${seen.length}<small>/${all.length}</small>`, 'verschiedene Aufgaben')}
         ${kpi('Fällig', due, 'Wiederholungen jetzt')}
@@ -172,24 +176,33 @@
     const phase = days < 0 ? 'done' : days <= 2 ? 'final' : days <= 21 ? 'sim' : 'learn';
     return { weakLabel: weakQ ? 'Schwächstes Thema' : 'Noch kaum geübt', exam, days, unseen, due, goal, goalNew, doneToday, weak, weakName: weak && (N[weak] || weak), simDue: now - lastB > 6 * 864e5, phase };
   }
+  const ic = n => `<svg class="ic"><use href="#i-${n}"/></svg>`;
+  function greet() { const h = new Date().getHours(); return h < 5 ? 'Noch wach?' : h < 11 ? 'Guten Morgen.' : h < 17 ? 'Hallo.' : h < 22 ? 'Guten Abend.' : 'Noch wach?'; }
   function planCard() {
     const P = planInfo();
-    if (!P) return `<section class="card plan"><h2>📅 Lernplan</h2><p class="muted">Trag deinen Prüfungstag ein – dann bekommst du hier jeden Tag ein Tagesziel bis zur Prüfung.</p><a class="btn sm ghost" href="#/settings">Prüfungstag eintragen</a></section>`;
-    if (P.phase === 'done') return `<section class="card plan"><h2>📅 Lernplan</h2><p>Der eingetragene Prüfungstag ist vorbei. Viel Erfolg – und trag ggf. den nächsten Termin ein.</p></section>`;
-    const pct = Math.min(100, Math.round(100 * P.doneToday / P.goal));
+    const lcd = (num, unit, top, bot) => `<div class="lcd" role="img" aria-label="${esc(num + ' ' + unit + ', ' + bot)}"><div class="lcd-top"><span>${top}</span><span>AP2</span></div><div class="lcd-num"><span data-ghost="${String(num).replace(/\d/g, '8')}">${num}</span><small>${unit}</small></div><div class="lcd-bot">${bot}</div></div>`;
+    if (!P) return `<section class="meter empty"><div class="meter-r"><h2>Wann ist deine Prüfung?</h2><ul><li>Trag den Prüfungstag ein. Dann siehst du hier jeden Tag dein Tagesziel bis zur Prüfung.</li></ul><div class="actions"><a class="btn primary" href="#/settings">${ic('cal')} Prüfungstag eintragen</a></div></div></section>`;
+    if (P.phase === 'done') return `<section class="meter empty"><div class="meter-r"><h2>Prüfung geschafft?</h2><ul><li>Der eingetragene Prüfungstag ist vorbei. Für den nächsten Termin einfach ein neues Datum eintragen.</li></ul><div class="actions"><a class="btn" href="#/settings">Neues Datum eintragen</a></div></div></section>`;
+    const segs = 20, on = Math.min(segs, Math.round(segs * P.doneToday / P.goal));
     const tips = {
-      learn: [`${P.goalNew} neue Aufgaben pro Tag reichen, um bis zur Prüfung alle ${P.unseen} noch offenen einmal zu sehen.`, P.due ? `${P.due} Wiederholungen sind fällig.` : '', P.simDue ? 'Diese Woche noch keine Prüfung geschrieben – einmal pro Woche eine Originalprüfung lohnt sich.' : ''],
-      sim: ['Endspurt: Jetzt vor allem ganze Prüfungen unter Zeitdruck (Simulation) und Schwächen gezielt üben.', P.simDue ? 'Heute bietet sich eine Prüfungssimulation an.' : '', P.due ? `${P.due} Wiederholungen sind fällig.` : ''],
-      final: ['Letzte Tage: nur noch Wiederholen und Fehler anschauen, nichts Neues mehr. Früh schlafen!', P.due ? `${P.due} Wiederholungen sind fällig.` : '']
+      learn: [`<b>${P.goalNew} neue Aufgaben</b> am Tag, dann hast du bis zur Prüfung alle ${P.unseen} offenen einmal gesehen.`, P.due ? `<b>${P.due} Wiederholungen</b> sind fällig.` : '', P.simDue ? 'Diese Woche noch keine Prüfung geschrieben. Einmal pro Woche lohnt sich.' : ''],
+      sim: ['Endspurt: ganze Prüfungen unter Zeitdruck schreiben und Schwächen gezielt üben.', P.simDue ? 'Heute passt eine <b>Prüfungssimulation</b>.' : '', P.due ? `<b>${P.due} Wiederholungen</b> sind fällig.` : ''],
+      final: ['Letzte Tage: nur noch wiederholen und Fehler anschauen, nichts Neues mehr. Früh schlafen.', P.due ? `<b>${P.due} Wiederholungen</b> sind fällig.` : '']
     }[P.phase].filter(Boolean);
-    return `<section class="card plan"><div class="plan-h"><h2>📅 Noch ${P.days === 0 ? 'heute' : P.days === 1 ? '1 Tag' : P.days + ' Tage'}</h2><span class="muted small">Prüfung am ${P.exam.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'long' })}</span></div>
-      <div class="plan-goal"><span>Heute: <b>${P.doneToday}</b> / ${P.goal} Aufgaben ${P.doneToday >= P.goal ? '✅' : ''}</span><div class="track"><i style="width:${pct}%"></i></div></div>
-      <ul class="plan-tips">${tips.map(x => `<li>${esc(x)}</li>`).join('')}${P.weak ? `<li>${P.weakLabel}: <b>${esc(P.weakName)}</b></li>` : ''}</ul>
-      <div class="actions wrap">${P.phase === 'learn' || !P.simDue ? `<button class="btn primary" id="planGo">⚡ Tagesziel üben</button>` : `<a class="btn primary" href="#/exams">📝 Prüfung simulieren</a>`}${P.weak ? `<button class="btn ghost" id="planWeak">🎯 ${esc(P.weakName)} üben</button>` : ''}</div></section>`;
+    if (P.weak) tips.push(`${P.weakLabel}: <b>${esc(P.weakName)}</b>`);
+    const date = P.exam.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `<section class="meter">
+      ${lcd(P.days, P.days === 1 ? 'Tag' : 'Tage', 'bis zur Prüfung', date)}
+      <div class="meter-r">
+        <div class="goal"><div class="goal-l"><span>Tagesziel${P.doneToday >= P.goal ? ' erreicht' : ''}</span><span><b>${P.doneToday}</b> / ${P.goal}</span></div>
+          <div class="segbar" aria-hidden="true">${Array.from({ length: segs }, (_, k) => `<i class="${k < on ? 'on' : ''}"></i>`).join('')}</div></div>
+        <ul>${tips.slice(0, 3).map(x => `<li><span>${x}</span></li>`).join('')}</ul>
+        <div class="actions wrap">${P.phase === 'learn' || !P.simDue ? `<button class="btn primary" id="planGo">${ic('bolt')} Tagesziel üben</button>` : `<a class="btn primary" href="#/exams">${ic('timer')} Prüfung simulieren</a>`}${P.weak ? `<button class="btn" id="planWeak">${ic('target')} ${esc(P.weakName)}</button>` : ''}</div>
+      </div></section>`;
   }
   function duelTeaser() {
     const box = $('#duelHint'); const Y = window.AP2Sync; if (!box || !Y || !Y.session) return;
-    Y.duels.list().then(ls => { const my = ls.filter(d => d.status === 'open' && d.my_score == null); if (my.length && $('#duelHint') === box) box.innerHTML = `<a class="banner" href="#/duels">⚔ ${my.length === 1 ? `${esc(my[0].opp_name)} hat dich zum Duell herausgefordert` : `${my.length} Duelle warten auf dich`} – jetzt spielen →</a>`; }).catch(() => {});
+    Y.duels.list().then(ls => { const my = ls.filter(d => d.status === 'open' && d.my_score == null); if (my.length && $('#duelHint') === box) box.innerHTML = `<a class="banner" href="#/duels"><svg class="ic"><use href="#i-duel"/></svg> ${my.length === 1 ? `${esc(my[0].opp_name)} hat dich zum Duell herausgefordert` : `${my.length} Duelle warten auf dich`} – jetzt spielen →</a>`; }).catch(() => {});
   }
   const kpi = (l, v, s) => `<div class="kpi"><span>${l}</span><b>${v}</b><small>${s}</small></div>`;
   function partBars() {
@@ -240,7 +253,7 @@
     return `<div class="work" id="work">
       <section class="orig"><div class="orig-bar"><span class="tag">${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${esc(t.label)}${t.mandatory ? ' · <b>nicht abwählbar</b>' : ''}</span>
         <div class="tools"><button class="ib" data-z="-">−</button><button class="ib" data-z="0">Breite</button><button class="ib" data-z="+">+</button>
-        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen">🤖 Tutor</button>' : ''}<button class="ib" id="pinBook" title="Heftseiten anheften">📎 Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden">⚑</button>'}</div></div>
+        ${o.tutor ? '<button class="ib tutor-ib" id="tutorBtn" title="KI-Tutor: Tipps und Erklärungen"><svg class="ic"><use href="#i-spark"/></svg> Tutor</button>' : ''}<button class="ib" id="pinBook" title="Heftseiten anheften"><svg class="ic"><use href="#i-clip"/></svg> Heftseiten</button>${o.noReport ? '' : '<button class="ib" id="report" title="Fehler melden"><svg class="ic"><use href="#i-flag"/></svg> </button>'}</div></div>
         <div class="orig-scroll"><img id="origImg" data-src="${t.image}" ${t.imageSize ? `width="${t.imageSize[0]}" height="${t.imageSize[1]}" style="aspect-ratio:${t.imageSize[0]}/${t.imageSize[1]}"` : ""} alt="Originalaufgabe ${esc(t.id)}" draggable="false"></div></section>
       <div class="split" id="split" title="Ziehen zum Ändern der Aufteilung"></div>
       <section class="side">${rightTop}<div class="pad" id="pad"></div></section></div>`;
@@ -289,11 +302,11 @@
       <span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     const tOpts = { tutor: () => phase === 'done' ? 'full' : 'hint', myAnswer: () => it.tries.length ? 'Antwort ' + it.tries.join(', dann ') : '' };
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card">${msg}<p class="q">Wähle die richtige Antwort:</p>${optButtons(null, dis, cls)}
-      <div class="actions wrap">${phase === 'done' ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button><button class="btn ghost" id="tutorExplain">🤖 Nachfragen</button>` : ''}<button class="btn ghost" id="pause">Pausieren</button></div>${phase === 'done' ? '<div id="xpl"></div>' : ''}</div>`, tOpts)}</div>`;
+      <div class="actions wrap">${phase === 'done' ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button><button class="btn ghost" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button>` : ''}<button class="btn ghost" id="pause">Pausieren</button></div>${phase === 'done' ? '<div id="xpl"></div>' : ''}</div>`, tOpts)}</div>`;
     wireFrame(t, m, tOpts);
     const te = $('#tutorExplain', m); if (te) te.onclick = () => openTutor(t, tOpts, 'explain');
     if (phase === 'done') explainInline($('#xpl', m), t, tOpts, it.result !== 'first');
-    if (s.endsAt) { const upd = () => { const r = s.endsAt - Date.now(); if (r <= 0) { s.done = true; S.save(true); return route(); } $('#timer').textContent = '⏱ ' + fmt(r); }; upd(); tick = setInterval(upd, 1000); }
+    if (s.endsAt) { const upd = () => { const r = s.endsAt - Date.now(); if (r <= 0) { s.done = true; S.save(true); return route(); } $('#timer').textContent = fmt(r); }; upd(); tick = setInterval(upd, 1000); }
     $$('.opt', m).forEach(b => b.onclick = () => {
       if (b.disabled || phase === 'done') return;
       const ch = +b.dataset.o; const ok = C.gradeMC(t, ch);
@@ -331,7 +344,7 @@
       }
       return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${sb.points} P · Selbstkontrolle</span></div>
         <textarea class="inp" rows="2" data-s="${sb.id}" placeholder="Deine Antwort (optional – Rechnung auch auf dem Rechenpapier)" ${graded ? 'disabled' : ''}>${esc((a[sb.id] || {}).text || '')}</textarea>
-        ${graded ? `${sb.solutionText ? `<div class="soltxt">Lösung: ${esc(sb.solutionText)}</div>` : ''}${ai && ai[sb.id] ? `<div class="aisug"><b>🤖 KI-Vorschlag: ${ai[sb.id].points == null ? 'keine Bewertung' : ai[sb.id].points + '/' + sb.points + ' P'}</b><span>${esc(ai[sb.id].reason || '')}</span>${ai[sb.id].points != null ? `<button class="link" data-aitake="${sb.id}">übernehmen</button>` : ''}</div>` : ''}<div class="self"><span>Deine Punkte:</span>${Array.from({ length: sb.points + 1 }, (_, p) => `<button class="pp ${g && g.self != null && g.points === p ? 'on' : ''}" data-sp="${sb.id}" data-p="${p}">${p}</button>`).join('')}</div>` : ''}</div>`;
+        ${graded ? `${sb.solutionText ? `<div class="soltxt">Lösung: ${esc(sb.solutionText)}</div>` : ''}${ai && ai[sb.id] ? `<div class="aisug"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag: ${ai[sb.id].points == null ? 'keine Bewertung' : ai[sb.id].points + '/' + sb.points + ' P'}</b><span>${esc(ai[sb.id].reason || '')}</span>${ai[sb.id].points != null ? `<button class="link" data-aitake="${sb.id}">übernehmen</button>` : ''}</div>` : ''}<div class="self"><span>Deine Punkte:</span>${Array.from({ length: sb.points + 1 }, (_, p) => `<button class="pp ${g && g.self != null && g.points === p ? 'on' : ''}" data-sp="${sb.id}" data-p="${p}">${p}</button>`).join('')}</div>` : ''}</div>`;
     }).join('');
     return `<p class="q">${esc(t.label)} · ${t.points} Punkte${t.grading === 'self' ? ' · Bewertung durch Selbstkontrolle mit der offiziellen Musterlösung' : ''}</p>${rows}`;
   }
@@ -363,7 +376,7 @@
       const hasInk = (st.ink[t.id] || []).some(pg => pg && pg.length);
       const canAI = graded && rec.phase === 'check' && window.AP2Sync && AP2Sync.session && t.solution.image && selfSubs.length && (hasInk || selfSubs.some(sb => ((rec.ans || {})[sb.id] || {}).text && rec.ans[sb.id].text.trim()));
       box.innerHTML = `${t.pointsEstimated ? '<p class="muted small">ℹ️ Punkteverteilung geschätzt – das Lösungsheft nennt nur die Gesamtpunktzahl.</p>' : ''}${openPanelHTML(t, rec.ans, graded && graded.g, rec.ai)}
-        ${canAI ? `<div class="actions wrap"><button class="btn ghost" id="aiBtn">${rec.ai ? '🤖 KI erneut fragen' : '🤖 KI-Vorschlag holen'}</button>${rec.ai ? '<button class="btn ghost" id="aiAll">Alle KI-Punkte übernehmen</button>' : ''}${rec.ai && rec.aiRead ? `<div class="airead"><b>📝 Das hat die KI auf deinem Rechenpapier gelesen:</b><span>${esc(rec.aiRead)}</span><small class="muted">Falsch gelesen? Dann deutlicher schreiben oder die Antwort ins Feld tippen.</small></div>` : ''}<span class="muted small" id="aiMsg">Vergleicht deine Antworten${hasInk ? ' und dein Rechenpapier' : ''} mit der Musterlösung. Nur ein Vorschlag – du entscheidest.</span></div>` : ''}
+        ${canAI ? `<div class="actions wrap"><button class="btn ghost" id="aiBtn">${rec.ai ? '<svg class="ic"><use href="#i-spark"/></svg> KI erneut fragen' : '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'}</button>${rec.ai ? '<button class="btn ghost" id="aiAll">Alle KI-Punkte übernehmen</button>' : ''}${rec.ai && rec.aiRead ? `<div class="airead"><b><svg class="ic"><use href="#i-pen"/></svg> Das hat die KI auf deinem Rechenpapier gelesen:</b><span>${esc(rec.aiRead)}</span><small class="muted">Falsch gelesen? Dann deutlicher schreiben oder die Antwort ins Feld tippen.</small></div>` : ''}<span class="muted small" id="aiMsg">Vergleicht deine Antworten${hasInk ? ' und dein Rechenpapier' : ''} mit der Musterlösung. Nur ein Vorschlag – du entscheidest.</span></div>` : ''}
         ${graded ? `<div class="fb ${graded.done ? 'good' : 'warn'}"><b>${graded.pts} von ${t.points} Punkten</b>${graded.done ? '' : ' – bitte die Selbstkontroll-Punkte vergeben.'}
           <span class="muted small">Offizielle Musterlösung ${esc(t.label)}: Lösungsheft S. ${t.solution.pages.join(', ')} (${esc(t.solution.template)}). Falsche Folgeergebnisse zählen 0 Punkte.</span>
           <span><button class="link" id="showSol">In eigenem Fenster</button> · <button class="link" id="showPage">Ganze Lösungsseite</button></span></div>
@@ -376,14 +389,14 @@
       $$('[data-aitake]', box).forEach(b => b.onclick = () => { const id = b.dataset.aitake; rec.self[id] = rec.ai[id].points; onFinish(rec, null); render(); });
       const aa = $('#aiAll', box); if (aa) aa.onclick = () => { Object.entries(rec.ai || {}).forEach(([id, v]) => { if (v.points != null) rec.self[id] = v.points; }); onFinish(rec, null); render(); };
       const ab = $('#aiBtn', box); if (ab) ab.onclick = async () => {
-        ab.disabled = true; ab.textContent = '🤖 KI prüft … (ca. 10–20 s)';
+        ab.disabled = true; ab.innerHTML = '<svg class="ic"><use href="#i-spark"/></svg> KI prüft …';
         try {
           const r = await AP2Sync.aiGrade({ taskId: t.id, label: `${t.periodLabel} ${PART_SHORT[t.part]} ${t.label}`, taskImage: t.image, solImage: t.solution.image,
             subtasks: selfSubs.map(sb => ({ id: sb.id, label: sb.label, points: sb.points, solutionText: sb.solutionText || '' })),
             answers: Object.fromEntries(selfSubs.map(sb => [sb.id, ((rec.ans || {})[sb.id] || {}).text || ''])), inkImage: AP2Pad.exportInk(st.ink[t.id]) });
           rec.ai = {}; r.results.forEach(x => rec.ai[x.id] = { points: x.points, reason: x.reason }); rec.aiModel = r.model; rec.aiRead = r.transcript || '';
           onFinish(rec, null); render(); AP2Toast(`KI-Vorschlag da – heute noch ${Math.max(0, r.remaining)} Anfragen.`);
-        } catch (e) { AP2Toast(e.message); ab.disabled = false; ab.textContent = '🤖 KI-Vorschlag holen'; }
+        } catch (e) { AP2Toast(e.message); ab.disabled = false; ab.innerHTML = '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'; }
       };
       const fi = $('#fin', box); if (fi) fi.onclick = () => { const gr = gradeOpen(t, rec.ans, rec.self); rec.phase = 'done'; onFinish(rec, gr); };
       const ss = $('#showSol', box); if (ss) ss.onclick = () => openSol(t);
@@ -412,7 +425,7 @@
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card openc"><div id="openBox"></div><div class="actions">${it.result ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button>` : ''}<button class="btn ghost" id="pause">Pausieren</button></div></div>`, oOpts)}</div>`;
     wireFrame(t, m, oOpts); hydrate(m);
     openWidget(m, t, it.rec, (rec, gr) => { if (gr) { it.result = recordOpen(t, rec, gr, 'training'); } s.updated = Date.now(); S.save(true); if (gr) route(); });
-    if (s.endsAt) { const upd = () => { const r = s.endsAt - Date.now(); if (r <= 0) { s.done = true; S.save(true); return route(); } $('#timer').textContent = '⏱ ' + fmt(r); }; upd(); tick = setInterval(upd, 1000); }
+    if (s.endsAt) { const upd = () => { const r = s.endsAt - Date.now(); if (r <= 0) { s.done = true; S.save(true); return route(); } $('#timer').textContent = fmt(r); }; upd(); tick = setInterval(upd, 1000); }
     const nx = $('#next'); if (nx) nx.onclick = () => { s.idx++; if (s.idx >= s.items.length) s.done = true; S.save(true); route(); };
     $('#pause').onclick = () => go('#/');
   }
@@ -437,7 +450,7 @@
     }
     let picked = null; const mOpts = { tutor: () => 'full', myAnswer: () => picked ? 'Antwort ' + picked : '' };
     m.innerHTML = `<div class="task-page"><div class="sess-top"><a class="link" href="#/doc/${t.source.docId}">← ${esc(doc(t.source.docId).partLabel)}</a></div>${taskFrame(t, `<div class="answer card"><p class="q">Freie Übung (ohne Wertung):</p>${optButtons()}<div id="fb"></div>
-      <div class="actions wrap"><button class="btn ghost" id="sol">Lösung zeigen</button><button class="btn ghost" id="tutorExplain">🤖 Nachfragen</button></div><div id="xpl"></div></div>`, mOpts)}</div>`;
+      <div class="actions wrap"><button class="btn ghost" id="sol">Lösung zeigen</button><button class="btn ghost" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button></div><div id="xpl"></div></div>`, mOpts)}</div>`;
     wireFrame(t, m, mOpts);
     $('#tutorExplain', m).onclick = () => openTutor(t, mOpts, 'explain');
     $$('.opt', m).forEach(b => b.onclick = () => { picked = +b.dataset.o; const ok = C.gradeMC(t, +b.dataset.o); $$('.opt', m).forEach(x => x.classList.remove('good', 'bad')); b.classList.add(ok ? 'good' : 'bad'); $('#fb').innerHTML = `<div class="fb ${ok ? 'good' : 'bad'}">${ok ? '✓ Richtig' : '✗ Falsch'}</div>`; explainInline($('#xpl', m), t, mOpts, !ok); });
@@ -448,7 +461,7 @@
   function exams(m) {
     m.innerHTML = `<header class="page-h"><h1>Originalprüfungen</h1><p>Teil A und WiSo (gebundene Aufgaben) in Originalreihenfolge. <b>Übung</b>: pausierbar, Lösungen nach Abgabe. <b>Simulation</b>: Timer läuft weiter (auch nach Neustart), keine Hilfen, Auto-Abgabe bei Zeitablauf.</p>
       <p class="muted small">Offizielle Zeit laut Deckblatt: Systementwurf und FuSA je 105 min für Teil A <i>und</i> B zusammen, WiSo 60 min inkl. ungebundener Aufgaben. Für Teil A allein ist keine offizielle Zeit angegeben – die vorgeschlagene Zeit ist änderbar.</p></header>
-      <button class="btn ghost" id="rnd">🎲 Zufällige Prüfung</button>
+      <button class="btn ghost" id="rnd"><svg class="ic"><use href="#i-dice"/></svg> Zufällige Prüfung</button>
       <div class="exam-list">${periods().map(p => `<section class="card"><h2>${esc(periodLabel(p))}</h2><div class="exam-parts">${MC_PARTS.map(pt => {
         const d = doc(`${p}_${pt}`); if (!d) return ''; const ts = tasksOf(d.id); const g = ts.filter(t => t.gradable).length;
         const best = Object.values(st.exams).filter(e => e.docId === d.id && e.submitted).sort((a, b) => b.score.percent - a.score.percent)[0];
@@ -511,7 +524,7 @@
     panel();
     $('#ov').onclick = () => { $('#ovl').hidden = !$('#ovl').hidden; };
     $('#ovx').onclick = () => { $('#ovl').hidden = true; };
-    const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) return submitExam(e, true); tm.textContent = '⏱ ' + fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
+    const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) return submitExam(e, true); tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { const open = e.taskIds.filter(x => !e.answers[x] && !e.deselected.includes(TASKS[x].number)).length; const fl = Object.values(e.flags).filter(Boolean).length; if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch offen.` : 'Alle Aufgaben sind beantwortet.') + (fl ? ` ${fl} als unsicher markiert.` : ''), buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) submitExam(e, false); };
     const pz = $('#pz'); if (pz) pz.onclick = () => { go('#/'); };
   }
@@ -530,7 +543,7 @@
       ${taskFrame(t, `<div class="answer card exam-card"><div class="ex-head"><span class="ex-no">${t.number}</span><span>von ${e.taskIds.length}</span></div>
         <div class="fb ${r.ok ? 'good' : r.deselected || r.blocked ? 'warn' : 'bad'}"><b>${verdict}</b><span>Deine Antwort: ${r.answer ? NUM[r.answer - 1] : '–'} · Lösung: ${NUM[r.correct - 1]}</span><span class="muted small">Beleg: IHK-Schablone ${t.solution.template}, Lösungsheft S. ${t.solution.page}</span><button class="link" id="sk">Lösungsschablone ansehen</button></div>
         ${optButtons(null, [1, 2, 3, 4, 5], cls)}
-        <div class="ex-sec"><button class="chip" id="onlyWrong">Nur Fehler durchgehen: ${e.reviewWrong ? 'an' : 'aus'}</button><button class="chip" id="tutorExplain">🤖 Nachfragen</button></div><div id="xpl"></div>
+        <div class="ex-sec"><button class="chip" id="onlyWrong">Nur Fehler durchgehen: ${e.reviewWrong ? 'an' : 'aus'}</button><button class="chip" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button></div><div id="xpl"></div>
         <div class="ex-nav"><button class="btn lg ghost" id="prev">← Zurück</button><button class="btn lg primary" id="nxt">Weiter →</button></div></div>`, rOpts)}
     </div>`;
     wireFrame(t, m, rOpts); hydrate(m);
@@ -575,7 +588,7 @@
     m.innerHTML = `<header class="page-h"><a class="link" href="#/library">← Bibliothek</a><h1>${esc(d.periodLabel)} · ${esc(d.partLabel)}</h1>
       <p class="muted small">SHA-256 ${d.sha256.slice(0, 16)}… · ${d.pages} Seiten${d.officialTime ? ' · Zeit: ' + esc(d.officialTime) : ''}</p></header>
       ${ts.length ? `<section class="card"><h2>Einzelaufgaben</h2><div class="tgrid">${ts.map(t => { const e = st.srs[t.id]; return `<a href="#/task/${t.id}" class="tb ${t.gradable ? '' : 'blk'} ${e && e.seen ? (e.box >= 2 ? 'good' : 'weak') : ''}" title="${t.gradable ? 'bewertbar' : esc(t.blockedReason)}">${t.type === 'open' ? t.label : t.number}</a>`; }).join('')}</div></section>` : ''}
-      <section class="card pv"><div class="pv-bar"><button class="btn sm ghost" id="pp">‹</button><span>Seite ${p}/${d.pageImages.length}</span><button class="btn sm ghost" id="np">›</button><button class="btn sm ghost" id="pin">📎 anheften</button></div>
+      <section class="card pv"><div class="pv-bar"><button class="btn sm ghost" id="pp">‹</button><span>Seite ${p}/${d.pageImages.length}</span><button class="btn sm ghost" id="np">›</button><button class="btn sm ghost" id="pin"><svg class="ic"><use href="#i-clip"/></svg> anheften</button></div>
       <img class="page" data-src="${d.pageImages[p - 1]}" alt="Seite ${p}"></section>`;
     $('#pp').onclick = () => go(`#/doc/${id}/${Math.max(1, p - 1)}`);
     $('#np').onclick = () => go(`#/doc/${id}/${Math.min(d.pageImages.length, p + 1)}`);
@@ -651,7 +664,7 @@
     $$('#ovl [data-go]', m).forEach(b => b.onclick = () => nav(+b.dataset.go));
     $('#ov').onclick = () => { $('#ovl').hidden = !$('#ovl').hidden; }; $('#ovx').onclick = () => { $('#ovl').hidden = true; };
     const pz = $('#pz'); if (pz) pz.onclick = () => { keep(); go('#/'); };
-    const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) { keep(); return bSubmit(e, true); } tm.textContent = '⏱ ' + fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
+    const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) { keep(); return bSubmit(e, true); } tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { keep(); const open = ts.filter(x => !bHasAnswer(e, x)).length;
       if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch ohne Antwort.` : 'Alle Aufgaben bearbeitet.') + ' Danach korrigierst du Aufgabe für Aufgabe mit der Musterlösung.', buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) bSubmit(e, false); };
   }
@@ -723,11 +736,11 @@
     const T = TUTOR[t.id] = TUTOR[t.id] || { msgs: [] };
     const paint = () => {
       if (!host.isConnected) return;
-      if (T.explain || T.partial) { host.innerHTML = `<div class="xpl"><div class="xpl-h"><b>🤖 So geht's richtig${T.withInk ? ' <small class="muted">· mit deinem Rechenpapier</small>' : ''}</b><button class="link" data-more>Nachfragen</button></div><div class="xpl-b">${tutorMd(T.explain || T.partial)}${T.explBusy ? ' <span class="dots3"><i></i><i></i><i></i></span>' : ''}</div><p class="muted small">KI-Erklärung – maßgeblich ist die offizielle IHK-Lösung.</p></div>`; }
+      if (T.explain || T.partial) { host.innerHTML = `<div class="xpl"><div class="xpl-h"><b><svg class="ic"><use href="#i-spark"/></svg> So geht's richtig${T.withInk ? ' <small class="muted">· mit deinem Rechenpapier</small>' : ''}</b><button class="link" data-more>Nachfragen</button></div><div class="xpl-b">${tutorMd(T.explain || T.partial)}${T.explBusy ? ' <span class="dots3"><i></i><i></i><i></i></span>' : ''}</div><p class="muted small">KI-Erklärung – maßgeblich ist die offizielle IHK-Lösung.</p></div>`; }
       else if (T.explBusy) host.innerHTML = `<div class="xpl"><div class="xpl-b muted"><span class="dots3"><i></i><i></i><i></i></span> KI erklärt die Lösung${T.withInk ? ' und liest dein Rechenpapier' : ''} …</div></div>`;
-      else if (T.explErr) host.innerHTML = `<div class="xpl"><div class="xpl-b muted">⚠️ ${esc(T.explErr)}</div><button class="btn sm ghost" data-go>Nochmal versuchen</button></div>`;
+      else if (T.explErr) host.innerHTML = `<div class="xpl"><div class="xpl-b muted"><svg class="ic"><use href="#i-warn"/></svg> ${esc(T.explErr)}</div><button class="btn sm ghost" data-go>Nochmal versuchen</button></div>`;
       else if (!Y || !Y.session) host.innerHTML = '';
-      else host.innerHTML = '<button class="btn ghost xpl-btn" data-go>🤖 Warum ist das so? Erklären lassen</button>';
+      else host.innerHTML = '<button class="btn ghost xpl-btn" data-go><svg class="ic"><use href="#i-spark"/></svg> Warum ist das so? Erklären lassen</button>';
       const g = $('[data-go]', host); if (g) g.onclick = () => run();
       const mo = $('[data-more]', host); if (mo) mo.onclick = () => openTutor(t, opts);
     };
@@ -754,11 +767,11 @@
     $('#windows').appendChild(w);
     const label = `${t.periodLabel} · ${PART_SHORT[t.part]} · ${t.label}`;
     const chipsFor = md => (md === 'hint'
-      ? [['hint', '💡 Tipp geben'], ['basics', '📘 Grundlagen erklären']]
-      : [['explain', '✅ Lösung erklären'], ...(((st.ink[t.id] || []).some(pg => pg && pg.length)) ? [['check', '🔍 Meine Rechnung prüfen']] : []), ['basics', '📘 Grundlagen erklären'], ['similar', '🔁 Ähnliche Übung'], ['hint', '💡 Tipp']]);
+      ? [['hint', '<svg class="ic"><use href="#i-bulb"/></svg> Tipp geben'], ['basics', '<svg class="ic"><use href="#i-book"/></svg> Grundlagen erklären']]
+      : [['explain', '<svg class="ic"><use href="#i-check"/></svg> Lösung erklären'], ...(((st.ink[t.id] || []).some(pg => pg && pg.length)) ? [['check', '<svg class="ic"><use href="#i-search"/></svg> Meine Rechnung prüfen']] : []), ['basics', '<svg class="ic"><use href="#i-book"/></svg> Grundlagen erklären'], ['similar', '<svg class="ic"><use href="#i-repeat"/></svg> Ähnliche Übung'], ['hint', '<svg class="ic"><use href="#i-bulb"/></svg> Tipp']]);
     const draw = busy => {
       const md = mode();
-      w.innerHTML = `<div class="tp-h"><b>🤖 KI-Tutor</b><span class="muted small">${esc(label)}</span><button class="ib" data-x aria-label="Schließen">✕</button></div>
+      w.innerHTML = `<div class="tp-h"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Tutor</b><span class="muted small">${esc(label)}</span><button class="ib" data-x aria-label="Schließen">✕</button></div>
         <div class="tp-msgs" id="tpMsgs">${st_.msgs.length ? '' : `<div class="tp-empty"><p>Frag mich alles zu dieser Aufgabe – oder tipp unten auf einen Vorschlag.</p><p class="muted small">Was du auf dem Rechenpapier geschrieben hast, sehe ich mit – frag z. B. „Wo ist mein Fehler?“</p>${md === 'hint' ? '<p class="muted small">Solange du die Aufgabe noch nicht beantwortet hast, gebe ich nur Tipps und verrate die Lösung nicht.</p>' : ''}</div>`}
           ${st_.msgs.map(x => `<div class="tp-m ${x.role} done">${x.role === 'model' ? tutorMd(x.text) : esc(x.text)}</div>`).join('')}${busy ? (st_.partial ? `<div class="tp-m model">${tutorMd(st_.partial)} <span class="dots3"><i></i><i></i><i></i></span></div>` : '<div class="tp-m model busy"><span class="dots3"><i></i><i></i><i></i></span> denkt nach …</div>') : ''}</div>
         <div class="tp-chips">${chipsFor(md).map(([a, l]) => `<button class="chip" data-a="${a}" ${busy ? 'disabled' : ''}>${l}</button>`).join('')}</div>
@@ -766,7 +779,7 @@
         <p class="tp-foot muted small">KI kann sich irren – maßgeblich ist die offizielle IHK-Lösung.</p>`;
       const box = $('#tpMsgs', w); box.scrollTop = box.scrollHeight;
       $('[data-x]', w).onclick = () => w.remove();
-      $$('.tp-chips [data-a]', w).forEach(b => b.onclick = () => b.dataset.a === 'check' ? ask_('chat', 'Meine Rechnung prüfen', 'Prüfe meine Rechnung auf dem Rechenpapier Schritt für Schritt: Was stimmt, wo genau ist ein Fehler (Formel, Einsetzen, Einheit, Rundung)?') : ask_(b.dataset.a, b.textContent.replace(/^\S+\s/, '')));
+      $$('.tp-chips [data-a]', w).forEach(b => b.onclick = () => b.dataset.a === 'check' ? ask_('chat', 'Meine Rechnung prüfen', 'Prüfe meine Rechnung auf dem Rechenpapier Schritt für Schritt: Was stimmt, wo genau ist ein Fehler (Formel, Einsetzen, Einheit, Rundung)?') : ask_(b.dataset.a, b.textContent.trim()));
       const q = $('#tpQ', w);
       q.addEventListener('input', () => { q.style.height = 'auto'; q.style.height = Math.min(140, q.scrollHeight) + 'px'; });
       q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#tpForm', w).requestSubmit(); } });
@@ -798,11 +811,11 @@
   function duels(m) {
     const Y = window.AP2Sync;
     m.innerHTML = `<header class="page-h"><h1>Duelle</h1><p>Fordere jemanden heraus: Ihr bekommt dieselben Original-Aufgaben (Multiple Choice), jeder spielt, wann er will. Mehr richtige Antworten gewinnen, bei Gleichstand die kürzere Zeit. Bewertet wird auf dem Server gegen die offiziellen IHK-Schablonen.</p></header>
-      ${Y && Y.session ? `<section class="card" id="board"><h2>🏆 Rangliste</h2><p class="muted">Wird geladen …</p></section><div class="grid2"><section class="card form" id="newDuel"><h2>Neues Duell</h2><p class="muted">Gegner werden geladen …</p></section><section class="card" id="duelList"><h2>Deine Duelle</h2><p class="muted">Wird geladen …</p></section></div>`
+      ${Y && Y.session ? `<section class="card" id="board"><h2><svg class="ic"><use href="#i-trophy"/></svg> Rangliste</h2><p class="muted">Wird geladen …</p></section><div class="grid2"><section class="card form" id="newDuel"><h2>Neues Duell</h2><p class="muted">Gegner werden geladen …</p></section><section class="card" id="duelList"><h2>Deine Duelle</h2><p class="muted">Wird geladen …</p></section></div>`
         : '<section class="card"><p>Für Duelle musst du angemeldet sein (Daten &amp; Einstellungen → Konto).</p><a class="btn primary" href="#/settings">Zum Konto</a></section>'}`;
     if (!Y || !Y.session) return;
-    if (Y.push) Y.push.status().then(x => { if (x === 'off' && !st.settings.pushAsked && $('#board')) { $('#board').insertAdjacentHTML('beforebegin', '<a class="banner" href="#/settings" id="pushTip">🔔 Willst du Bescheid bekommen, wenn dich jemand herausfordert? Mitteilungen einschalten →</a>'); $('#pushTip').onclick = () => { st.settings.pushAsked = 1; S.save(true); }; } }).catch(() => {});
-        Y.leaderboard().then(renderBoard).catch(e => { const b = $('#board'); if (b) b.innerHTML = `<h2>🏆 Rangliste</h2><p class="muted">${esc(e.message)}</p>`; });
+    if (Y.push) Y.push.status().then(x => { if (x === 'off' && !st.settings.pushAsked && $('#board')) { $('#board').insertAdjacentHTML('beforebegin', '<a class="banner" href="#/settings" id="pushTip"><svg class="ic"><use href="#i-bell"/></svg> Willst du Bescheid bekommen, wenn dich jemand herausfordert? Mitteilungen einschalten →</a>'); $('#pushTip').onclick = () => { st.settings.pushAsked = 1; S.save(true); }; } }).catch(() => {});
+        Y.leaderboard().then(renderBoard).catch(e => { const b = $('#board'); if (b) b.innerHTML = `<h2><svg class="ic"><use href="#i-trophy"/></svg> Rangliste</h2><p class="muted">${esc(e.message)}</p>`; });
         Promise.all([Y.duels.players(), Y.duels.list()]).then(([pl, ls]) => { DUELS = ls; if (!$('#newDuel')) return; renderNewDuel(pl); renderDuelList(ls); })
       .catch(e => { const b = $('#duelList'); if (b) b.innerHTML = `<h2>Deine Duelle</h2><p class="bad">${esc(e.message)}</p>`; });
   }
@@ -812,11 +825,11 @@
     const stt = await Y.push.status().catch(() => 'unsupported');
     const ios = Y.push.standaloneNeeded();
     box.innerHTML = `<label>Mitteilungen bei Duellen</label>
-      ${stt === 'on' ? '<p>🔔 Aktiv auf diesem Gerät – du bekommst Bescheid, wenn dich jemand herausfordert oder euer Duell gespielt hat.</p><button class="btn sm ghost" id="pushOff">Ausschalten</button>'
+      ${stt === 'on' ? '<p><svg class="ic"><use href="#i-bell"/></svg> Aktiv auf diesem Gerät – du bekommst Bescheid, wenn dich jemand herausfordert oder euer Duell gespielt hat.</p><button class="btn sm ghost" id="pushOff">Ausschalten</button>'
       : stt === 'denied' ? '<p class="muted">Mitteilungen sind für diese Seite blockiert. Erlauben kannst du sie in den Browser-/Systemeinstellungen.</p>'
       : stt === 'unsupported' && ios ? '<p class="muted">Auf iPhone/iPad: erst über Teilen → „Zum Home-Bildschirm“ installieren und die App von dort öffnen – dann kannst du Mitteilungen hier einschalten.</p>'
       : stt === 'unsupported' ? '<p class="muted">Dieser Browser unterstützt keine Mitteilungen.</p>'
-      : '<button class="btn sm primary" id="pushOn">🔔 Mitteilungen einschalten</button>'}`;
+      : '<button class="btn sm primary" id="pushOn"><svg class="ic"><use href="#i-bell"/></svg> Mitteilungen einschalten</button>'}`;
     const on = $('#pushOn', box), off = $('#pushOff', box);
     if (on) on.onclick = async () => { on.disabled = true; try { await Y.push.enable(); AP2Toast('Mitteilungen eingeschaltet.'); } catch (e) { AP2Toast(e.message); } renderPush(); };
     if (off) off.onclick = async () => { off.disabled = true; try { await Y.push.disable(); } catch (e) { AP2Toast(e.message); } renderPush(); };
@@ -825,11 +838,11 @@
     const b = $('#board'); if (!b) return;
     const score = r => r.week_ok * 2 + (r.week_n - r.week_ok) + r.streak * 3;   // richtig zählt doppelt, Lerntage-Serie gibt Bonus
     rows = rows.slice().sort((a, c) => score(c) - score(a) || c.total_tasks - a.total_tasks);
-    const medal = ['🥇', '🥈', '🥉'];
+    
     const ago = ts => { if (!ts) return 'noch nie'; const d = Math.floor((Date.now() - ts) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : `vor ${d} Tagen`; };
-    b.innerHTML = `<h2>🏆 Rangliste <small class="muted">letzte 7 Tage</small></h2>
-      <div class="board">${rows.map((r, i) => `<div class="brow ${r.me ? 'me' : ''}"><span class="rk">${medal[i] || i + 1}</span><b>${esc(r.name)}${r.me ? ' (du)' : ''}</b>
-        <span class="bst"><span title="Aufgaben diese Woche"><b>${r.week_n}</b> Aufg.</span><span title="Sofort richtig diese Woche">${r.week_n ? Math.round(100 * r.week_ok / r.week_n) : 0}% richtig</span><span title="Lerntage am Stück">🔥 ${r.streak}</span><span title="Gewonnene Duelle">⚔ ${r.duel_wins}</span></span>
+    b.innerHTML = `<h2><svg class="ic"><use href="#i-trophy"/></svg> Rangliste <small class="muted">letzte 7 Tage</small></h2>
+      <div class="board">${rows.map((r, i) => `<div class="brow ${r.me ? 'me' : ''}"><span class="rk">${i + 1}</span><b>${esc(r.name)}${r.me ? ' (du)' : ''}</b>
+        <span class="bst"><span title="Aufgaben diese Woche"><b>${r.week_n}</b> Aufg.</span><span title="Sofort richtig diese Woche">${r.week_n ? Math.round(100 * r.week_ok / r.week_n) : 0}% richtig</span><span title="Lerntage am Stück"><svg class="ic"><use href="#i-flame"/></svg> ${r.streak}</span><span title="Gewonnene Duelle"><svg class="ic"><use href="#i-duel"/></svg> ${r.duel_wins}</span></span>
         <span class="muted small">${r.total_tasks} versch. Aufgaben · zuletzt ${ago(r.last_at)}</span></div>`).join('')}</div>
       <p class="muted small">Punkte: richtige Antwort 2, sonstige 1, je Lerntag in Serie 3. Wer nicht erscheinen will: Einstellungen → Rangliste.</p>`;
   }
@@ -840,7 +853,7 @@
       <label>Gegner</label><div class="chips" id="dOpp">${pl.map((p, i) => `<button class="chip ${i ? '' : 'on'}" data-id="${p.id}">${esc(p.display_name)}</button>`).join('')}</div>
       <label>Anzahl Aufgaben</label><div class="seg" id="dN">${[5, 10, 15].map(n => `<button data-n="${n}" class="${n === 10 ? 'on' : ''}">${n}</button>`).join('')}</div>
       <label>Bereiche</label><div class="chips" id="dParts">${MC_PARTS.map(p => `<button class="chip on" data-p="${p}">${PART_SHORT[p]}</button>`).join('')}</div>
-      <div class="actions"><button class="btn primary lg" id="dGo">⚔ Herausfordern</button></div>`;
+      <div class="actions"><button class="btn primary lg" id="dGo"><svg class="ic"><use href="#i-duel"/></svg> Herausfordern</button></div>`;
     const one = id => $(id).addEventListener('click', e => { const x = e.target.closest('button'); if (!x) return; $$(id + ' button').forEach(y => y.classList.toggle('on', y === x)); });
     one('#dOpp'); one('#dN');
     $('#dParts').addEventListener('click', e => { const x = e.target.closest('button'); if (x) x.classList.toggle('on'); });
@@ -859,7 +872,7 @@
     const b = $('#duelList');
     const mine = ls.filter(d => d.status === 'open' && d.my_score == null), wait = ls.filter(d => d.status === 'open' && d.my_score != null), done = ls.filter(d => d.status === 'done'), dec = ls.filter(d => d.status === 'declined');
     const when = d => new Date(d.created_at).toLocaleDateString('de-DE');
-    const res = { win: '🏆 gewonnen', lose: 'verloren', draw: 'unentschieden' };
+    const res = { win: '<svg class="ic"><use href="#i-trophy"/></svg> gewonnen', lose: 'verloren', draw: 'unentschieden' };
     b.innerHTML = `<h2>Deine Duelle</h2>${ls.length ? '' : '<p class="muted">Noch keine Duelle.</p>'}
       ${mine.length ? `<h3>Du bist dran</h3>${mine.map(d => `<div class="row"><b>gegen ${esc(d.opp_name)}</b><span class="muted">${d.task_ids.length} Aufgaben · ${esc(d.label || '')} · ${when(d)}${d.opp_done ? ' · Gegner hat schon gespielt' : ''}</span><span><a class="btn sm primary" href="#/duel/${d.id}">Spielen</a> <button class="btn sm ghost" data-dec="${d.id}">Ablehnen</button></span></div>`).join('')}` : ''}
       ${wait.length ? `<h3>Wartet auf Gegner</h3>${wait.map(d => `<a class="row" href="#/duelr/${d.id}"><b>gegen ${esc(d.opp_name)}</b><span class="muted">${when(d)}</span><span class="score">du: ${d.my_score}/${d.task_ids.length}</span></a>`).join('')}` : ''}
@@ -879,13 +892,13 @@
     const draw = () => {
       if (ROUTE !== '#/duel/' + id) return;
       const t = TASKS[d.task_ids[p.cur]]; if (pad) { pad.destroy(); pad = null; }
-      m.innerHTML = `<div class="task-page exam-mode"><div class="exam-bar"><div class="eb-l"><b>⚔ Duell gegen ${esc(d.opp_name)}</b></div><span class="timer big" id="timer"></span>
+      m.innerHTML = `<div class="task-page exam-mode"><div class="exam-bar"><div class="eb-l"><b><svg class="ic"><use href="#i-duel"/></svg> Duell gegen ${esc(d.opp_name)}</b></div><span class="timer big" id="timer"></span>
         <span class="muted">${p.answers.filter(Boolean).length}/${p.answers.length} beantwortet</span><div class="eb-r"><button class="btn sm ghost" id="dPause">Später weiter</button><button class="btn sm primary" id="dSub">Abgeben</button></div></div>
         <div class="dots duel-dots">${p.answers.map((a, i) => `<button class="${a ? 'ans' : ''} ${i === p.cur ? 'cur' : ''}" data-go="${i}">${i + 1}</button>`).join('')}</div>
         ${taskFrame(t, `<div class="answer card exam-card"><div class="ex-head"><span class="ex-no">${p.cur + 1}</span><span>von ${p.answers.length}</span></div>${optButtons(p.answers[p.cur] || null, [])}
           <div class="ex-nav"><button class="btn lg ghost" id="dPrev" ${p.cur ? '' : 'disabled'}>← Zurück</button><button class="btn lg ${p.answers[p.cur] ? 'primary' : ''}" id="dNext">${p.cur + 1 < p.answers.length ? 'Weiter →' : 'Zur Abgabe'}</button></div></div>`, { noReport: true })}</div>`;
       wireFrame(t, m); hydrate(m);
-      let last = Date.now(), n = 0; const upd = () => { const now = Date.now(); if (document.visibilityState === 'visible') p.elapsed += Math.min(5000, now - last); last = now; if (++n % 10 === 0) S.save(); const tm = $('#timer'); if (tm) tm.textContent = '⏱ ' + fmt(p.elapsed); }; upd(); clearInterval(tick); tick = setInterval(upd, 1000);
+      let last = Date.now(), n = 0; const upd = () => { const now = Date.now(); if (document.visibilityState === 'visible') p.elapsed += Math.min(5000, now - last); last = now; if (++n % 10 === 0) S.save(); const tm = $('#timer'); if (tm) tm.textContent = fmt(p.elapsed); }; upd(); clearInterval(tick); tick = setInterval(upd, 1000);
       $$('.opt', m).forEach(b => b.onclick = () => { p.answers[p.cur] = +b.dataset.o; S.save(true); $$('.opt', m).forEach(x => x.classList.toggle('sel', x === b)); $('#dNext').classList.add('primary'); $$('.duel-dots button')[p.cur].classList.add('ans'); });
       $$('.duel-dots [data-go]', m).forEach(b => b.onclick = () => { p.cur = +b.dataset.go; S.save(true); draw(); });
       $('#dPrev').onclick = () => { p.cur--; S.save(true); draw(); };
@@ -905,7 +918,7 @@
     let d; try { DUELS = await AP2Sync.duels.list(); d = DUELS.find(x => x.id === id); } catch (e) { m.innerHTML = `<section class="card"><p class="bad">${esc(e.message)}</p></section>`; return; }
     if (!d) { go('#/duels'); return; }
     const w = duelWinner(d), n = d.task_ids.length;
-    const head = d.status !== 'done' ? `Du hast ${d.my_score} von ${n} richtig. ${esc(d.opp_name)} hat noch nicht gespielt.` : { win: `🏆 Gewonnen gegen ${esc(d.opp_name)}!`, lose: `${esc(d.opp_name)} hat gewonnen.`, draw: 'Unentschieden!' }[w];
+    const head = d.status !== 'done' ? `Du hast ${d.my_score} von ${n} richtig. ${esc(d.opp_name)} hat noch nicht gespielt.` : { win: `<svg class="ic"><use href="#i-trophy"/></svg> Gewonnen gegen ${esc(d.opp_name)}!`, lose: `${esc(d.opp_name)} hat gewonnen.`, draw: 'Unentschieden!' }[w];
     const cell = (a, k) => a ? `<span class="${a === k ? 'good' : 'bad'}">${NUM[a - 1]}</span>` : '<span class="muted">–</span>';
     m.innerHTML = `<header class="page-h"><h1>Duell gegen ${esc(d.opp_name)}</h1><p>${head}</p></header>
       <section class="kpis">${kpi('Du', `${d.my_score}<small>/${n}</small>`, 'Zeit ' + fmt(d.my_time || 0))}${kpi(esc(d.opp_name), d.opp_score != null ? `${d.opp_score}<small>/${n}</small>` : '…', d.opp_time != null ? 'Zeit ' + fmt(d.opp_time) : 'noch offen')}</section>

@@ -1,8 +1,8 @@
 // Offline-Cache: App-Hülle (Netz zuerst, offline aus dem Cache). Aufgabendaten liegen geschützt in Supabase und
 // werden von der App selbst im Cache „ap2-data“ gehalten – den lässt dieser Service Worker beim Update stehen.
-const V = 'ap2-claude-v20';
+const V = 'ap2-claude-v21';
 const KEEP = [V, 'ap2-data'];
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/core.js', 'js/store.js', 'js/pad.js', 'js/sync.js', 'js/symbols.js', 'js/app.js', 'manifest.webmanifest'];
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/core.js', 'js/store.js', 'js/pad.js', 'js/sync.js', 'js/symbols.js', 'js/app.js', 'manifest.webmanifest', 'fonts/archivo.woff2', 'fonts/archivo-ext.woff2', 'icon-192.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => !KEEP.includes(k)).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

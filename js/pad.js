@@ -106,7 +106,7 @@
       ctx.fillStyle = css.getPropertyValue('--pad-bg').trim() || '#e9edf5'; ctx.fillRect(0, 0, cv.width, cv.height);
       view(ctx);
       const vy0 = oy, vy1 = oy + H / Z;
-      const gcol = css.getPropertyValue('--grid').trim() || '#dbe4f5';
+      const gcol = css.getPropertyValue('--pad-grid').trim() || '#dbe4f5';
       for (let i = 0; i < pages.length; i++) {
         const top = pageTop(i); if (top > vy1 || top + PH < vy0) continue;
         ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(16,32,80,.12)'; ctx.shadowBlur = 6 * dpr; ctx.fillRect(0, top, PW, PH); ctx.shadowBlur = 0;
