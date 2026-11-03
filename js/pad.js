@@ -229,14 +229,15 @@
     /* ---------- Finger ---------- */
     let tg = null, vel = [0, 0], lastT = 0, lastP = null, inertia = 0, palm = false;
     const pts = t => [...t].filter(x => x.touchType !== 'stylus').map(x => [x.clientX, x.clientY]);
-    const big = t => (t.radiusX || 0) > 22 || (t.radiusY || 0) > 22;            // breite Auflage = Handballen
-    const penRecent = () => penDown || performance.now() - penAt < 1200;
+    // Handballen: Finger, die während des Schreibens oder direkt danach aufsetzen, werden ignoriert.
+    // (Keine Erkennung über die Auflagefläche – auf dem iPad melden normale Finger teils große Werte, das blockierte das Zoomen.)
+    const penRecent = () => penDown || performance.now() - penAt < 450;
     // Stift kommt, während der Handballen schon liegt: Verschieben/Zoomen rückgängig machen und Finger bis zum Abheben ignorieren
     function palmGuard() { if (tg) { ox = tg.ox; oy = tg.oy; Z = tg.Z; clampView(); schedule(); palm = true; } tg = null; cancelAnimationFrame(inertia); }
     lv.addEventListener('touchstart', e => {
       e.preventDefault();
       if ([...e.changedTouches].some(t => t.touchType === 'stylus') || cur) return;
-      if (palm || penRecent() || [...e.touches].some(big)) { if (tg) palmGuard(); palm = true; return; }
+      if (palm || penRecent()) { if (tg) palmGuard(); palm = true; return; }
       const p = pts(e.touches); cancelAnimationFrame(inertia); vel = [0, 0];
       const maxN = Math.max(tg ? tg.maxN : 0, p.length);
       tg = { n: p.length, start: tg ? tg.start : performance.now(), p0: p, ox, oy, Z, moved: tg ? tg.moved : false, maxN };
@@ -245,7 +246,6 @@
     lv.addEventListener('touchmove', e => {
       e.preventDefault();
       if (!tg || cur || palm) return;
-      if ([...e.touches].some(big)) { palmGuard(); return; }
       const p = pts(e.touches); const now = performance.now();
       if (p.length === 1 && tg.n === 1) {
         const dx = p[0][0] - tg.p0[0][0], dy = p[0][1] - tg.p0[0][1];
@@ -268,7 +268,7 @@
       if (e.touches.length === 0) {
         const dt = performance.now() - tg.start;
         // Tipp-Gesten nur, wenn kein Stift in der Nähe war (Handballen löst sonst „Rückgängig“ aus)
-        if (!tg.moved && dt < 300 && !penRecent() && performance.now() - penAt > 1500) { if (tg.maxN === 2) doUndo(); else if (tg.maxN === 3) doRedo(); }
+        if (!tg.moved && dt < 300 && !penRecent() && performance.now() - penAt > 1000) { if (tg.maxN === 2) doUndo(); else if (tg.maxN === 3) doRedo(); }
         if (tg.n === 1 && tg.moved && Math.hypot(vel[0], vel[1]) > .3) {
           let [vx, vy] = vel; const step = () => { vx *= .94; vy *= .94; ox -= vx * 16 / Z; oy -= vy * 16 / Z; clampView(); render(); if (Math.hypot(vx, vy) > .02) inertia = requestAnimationFrame(step); };
           inertia = requestAnimationFrame(step);

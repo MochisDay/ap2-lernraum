@@ -440,3 +440,10 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .ep .btn.primary{background:var(--ink);color:var(--surface);box-shadow:none}
 .ep .btn.primary:hover{background:var(--ink2)}
 @media (max-width:1000px){#toast{bottom:calc(84px + env(safe-area-inset-bottom))}}
+
+/* Löschen / Zurücksetzen */
+.resume{display:flex;gap:6px;align-items:stretch;margin-bottom:6px}.resume .row{flex:1;margin:0}
+.resume .del{flex:0 0 auto;width:46px;justify-content:center;border-radius:var(--r-md);color:var(--muted)}
+.resume .del:hover{color:var(--bad);background:var(--badBg)}
+.btn.danger{background:var(--bad);border-color:transparent;color:#fff}.btn.danger:hover{filter:brightness(1.08)}
+.danger-zone{border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}

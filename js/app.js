@@ -145,14 +145,21 @@
       </section>
       <div class="grid2">
         <section class="card"><h2>Weitermachen</h2>${open.length || exOpen.length || bOpen.length ? '' : '<p class="muted">Keine offenen Sitzungen.</p>'}
-          ${bOpen.map(e => `<a class="row" href="#/${e.submitted ? 'bresult' : 'bexam'}/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.submitted ? 'Korrektur offen' : e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${bProgress(e)}</span></a>`).join('')}
-          ${open.map(s => `<a class="row" href="#/session/${s.id}"><b>Schnelltraining</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE')}</span></a>`).join('')}
-          ${exOpen.map(e => `<a class="row" href="#/exam/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${Object.keys(e.answers).length}/${e.taskIds.length} beantwortet</span></a>`).join('')}
+          ${bOpen.map(e => `<div class="resume"><a class="row" href="#/${e.submitted ? 'bresult' : 'bexam'}/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.submitted ? 'Korrektur offen' : e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${bProgress(e)}</span></a><button class="ib del" data-del="b:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
+          ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
+          ${exOpen.map(e => `<div class="resume"><a class="row" href="#/exam/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${Object.keys(e.answers).length}/${e.taskIds.length} beantwortet</span></a><button class="ib del" data-del="e:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
         </section>
         <section class="card"><h2>Stärken &amp; Schwächen</h2>${partBars()}</section>
       </div>
       <section class="card"><h2>Letzte Prüfungen</h2>${bDone.map(e => `<a class="row" href="#/bresult/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="score">${e.result.pts}/${e.result.max} P · Note ${e.result.note}</span></a>`).join('')}${exDone.length ? exDone.map(e => `<a class="row" href="#/result/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="score">${e.score.right}/${e.score.max} · ${e.score.percent}%</span></a>`).join('') : (bDone.length ? '' : '<p class="muted">Noch keine Prüfung abgegeben.</p>')}</section>`;
     duelTeaser();
+    $$('[data-del]', m).forEach(b => b.onclick = async () => {
+      const [k, id] = b.dataset.del.split(':');
+      const what = { s: 'dieses Training', e: 'diese Prüfung', b: 'diese Prüfung' }[k];
+      if (!(await ask({ title: `${what[0].toUpperCase() + what.slice(1)} löschen?`, text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
+      if (k === 's') delete st.sessions[id]; else if (k === 'e') delete st.exams[id]; else if (st.bexams) delete st.bexams[id];
+      S.save(true); AP2Toast('Gelöscht.'); route();
+    });
     const pb = $('#planGo'); if (pb) pb.onclick = () => go('#/training');
     const pw = $('#planWeak'); if (pw) pw.onclick = () => { const P = planInfo(); if (P && P.weak) topicTraining(P.weak); };
   }
@@ -989,8 +996,19 @@
         <p class="muted small">Jede Aufgabe enthält Quell-PDF-Hash, Seite, Bildkoordinaten, offizielle Lösung mit Schablone und Seite sowie Prüfvermerk. Offene Aufgaben (Teil B, WiSo U) werden mit der offiziellen Musterlösung per Selbstkontrolle bewertet; Zahlenwerte mit Einheit werden – wo übertragen und nachgerechnet – automatisch geprüft.</p>
         ${st.reports.length ? `<h3>Deine Fehlermeldungen (${st.reports.length})</h3>${st.reports.map(r => `<div class="row"><b>${esc(r.task)}</b><span>${esc(r.text)}</span></div>`).join('')}` : ''}</section>
       <section class="card form" id="acct"></section>
+      <section class="card danger-zone"><h2>Lernstand zurücksetzen</h2><p class="muted">Setzt alles auf 0: bearbeitete Aufgaben, Wiederholungen, Statistik, angefangene Trainings und Prüfungen, Rechenpapier. Einstellungen, Prüfungstag und Konto bleiben. Vorher wird automatisch eine Sicherung angelegt, die du unter „Sicherung“ wiederherstellen kannst.</p>
+        <div class="actions"><button class="btn danger" id="resetAll">Lernstand auf 0 setzen</button></div></section>
       <section class="card" id="adminBox" hidden></section>`;
     renderAccount();
+    $('#resetAll').onclick = async () => {
+      const v = await ask({ title: 'Wirklich alles auf 0 setzen?', text: 'Zum Bestätigen <b>null</b> eintippen.', input: 'text', buttons: [['Auf 0 setzen', true, 'danger'], ['Abbrechen', false, 'ghost']] });
+      if (v === false || v == null) return;
+      if (String(v).trim().toLowerCase() !== 'null' && String(v).trim() !== '0') return AP2Toast('Nicht zurückgesetzt – bitte „null“ eintippen.');
+      S.backup('vor-zuruecksetzen');
+      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, open: {}, ink: {}, duelPlay: {} });
+      for (const k in TUTOR) delete TUTOR[k];
+      S.save(true); AP2Toast('Lernstand ist auf 0. Die Sicherung davor findest du unter „Sicherung“.'); go('#/');
+    };
     $('#mouse').onchange = e => { st.settings.mouseInk = e.target.checked; S.save(true); };
     $('#exd').onchange = e => { st.settings.examDate = e.target.value || null; S.save(true); AP2Toast(e.target.value ? 'Prüfungstag gespeichert – dein Lernplan ist auf der Startseite.' : 'Prüfungstag entfernt.'); };
     $('#board').onchange = e => { st.settings.hideBoard = !e.target.checked; S.save(true); };
@@ -1044,7 +1062,7 @@
     } catch (e) { box.innerHTML = `<h2>Administration</h2><p class="muted">${esc(e.message)}</p>`; }
   }
 
-  const REASON = { 'vor-cloud-uebernahme': 'vor Übernahme aus der Cloud', 'vor-import': 'vor Import', 'vor-migration': 'vor Update', 'vor-wiederherstellung': 'vor Wiederherstellung', auto: 'automatisch', automatisch: 'automatisch' };
+  const REASON = { 'vor-zuruecksetzen': 'vor Zurücksetzen auf 0', 'vor-cloud-uebernahme': 'vor Übernahme aus der Cloud', 'vor-import': 'vor Import', 'vor-migration': 'vor Update', 'vor-wiederherstellung': 'vor Wiederherstellung', auto: 'automatisch', automatisch: 'automatisch' };
   function download(name, text, type) {
     if (window.top === window) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); return; }
     ask({ title: name, text: 'Kopiere den Text und speichere ihn z. B. in der Notizen- oder Dateien-App.', area: true, rows: 10, readonly: true, value: text, buttons: [['Kopieren', 'copy', 'primary'], ['Schließen', false, 'ghost']] });
