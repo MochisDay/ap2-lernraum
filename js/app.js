@@ -35,7 +35,7 @@
     });
   }
   window.AP2Ask = ask;
-  const APPV = 25;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 26;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   document.addEventListener('click', async e => {
     const d = e.target.closest('[data-sdel]'); if (!d) return;
     if (!(await ask({ title: 'Dieses Training löschen?', text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
@@ -174,7 +174,10 @@
       const what = { s: 'dieses Training', e: 'diese Prüfung', b: 'diese Prüfung' }[k];
       if (!(await ask({ title: `${what[0].toUpperCase() + what.slice(1)} löschen?`, text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
       if (k === 's') delete st.sessions[id]; else if (k === 'e') delete st.exams[id]; else if (st.bexams) delete st.bexams[id];
-      S.save(true); AP2Toast('Gelöscht.'); route();
+      S.save(true); AP2Toast('Gelöscht.');
+      // Nur die Zeile entfernen statt neu zu zeichnen – so bleibt die Seite an der Stelle stehen
+      const row = b.closest('.resume'), card = row.parentElement; row.style.transition = 'opacity .2s'; row.style.opacity = '0';
+      setTimeout(() => { row.remove(); if (!card.querySelector('.resume')) card.insertAdjacentHTML('beforeend', '<p class="muted">Keine offenen Sitzungen.</p>'); }, 200);
     });
     const pb = $('#planGo'); if (pb) pb.onclick = () => go('#/training');
     const pw = $('#planWeak'); if (pw) pw.onclick = () => { const P = planInfo(); if (P && P.weak) topicTraining(P.weak); };
