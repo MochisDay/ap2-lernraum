@@ -36,8 +36,15 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 33;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 34;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
+  // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
+  function freshSheet(id) {
+    const ink = (st.ink[id] || []).some(pg => pg && pg.length), an = st.anno && st.anno[id] && st.anno[id].length;
+    if (!ink && !an) return;
+    st.inkArchive = st.inkArchive || {}; st.inkArchive[id] = { ink: ink ? st.ink[id] : null, anno: an ? st.anno[id] : null, at: Date.now() };
+    st.ink[id] = [[]]; if (st.anno) delete st.anno[id];
+  }
   const hasAnno = id => !!(st.anno && st.anno[id] && st.anno[id].length);
   const hasWork = id => hasAnno(id) || (st.ink[id] || []).some(pg => pg && pg.length);
   // Für die KI: Rechenpapier, und wenn auf der Aufgabe geschrieben wurde, die Aufgabe mit Eintragungen obendrauf
@@ -55,6 +62,9 @@
     AP2Toast(on ? 'Gemerkt – die Aufgabe ist jetzt im Fehlerheft.' : 'Markierung entfernt.');
     if (!on && ROUTE === '#/mistakes') $$(`.resume [data-mark="${id}"]`).forEach(b => b.closest('.resume').remove());
   }
+  document.addEventListener('click', async e => { const b = e.target.closest('[data-fresh]'); if (!b) return;
+    if (!(await ask({ title: 'Neu beginnen?', text: 'Rechenpapier und Eintragungen auf der Aufgabe werden geleert. Der alte Stand wird archiviert.', buttons: [['Neues Blatt', true, 'primary'], ['Abbrechen', false, 'ghost']] }))) return;
+    freshSheet(b.dataset.fresh); S.save(true); route(); });
   document.addEventListener('click', e => { const b = e.target.closest('[data-mark]'); if (b) { e.preventDefault(); toggleMark(b.dataset.mark); } });
   document.addEventListener('click', async e => {
     const d = e.target.closest('[data-sdel]'); if (!d) return;
@@ -376,6 +386,7 @@
     const s = st.sessions[id]; if (!s) { go('#/training'); return; }
     if (s.idx >= s.items.length || (s.endsAt && Date.now() > s.endsAt && !s.done)) return sessionEnd(m, s);
     const it = s.items[s.idx]; const t = TASKS[it.id];
+    if (!it.fresh) { freshSheet(t.id); it.fresh = 1; S.save(true); }   // neuer Versuch = leeres Blatt (altes wird archiviert)
     if (t.type === 'open') return openSession(m, s, it, t);
     const phase = it.result ? 'done' : (it.tries.length === 1 ? 'retry' : 'ask');
     let msg = '', dis = [], cls = {};
@@ -456,7 +467,9 @@
       if (sb.check.kind === 'number') {
         const inputs = sb.check.values.map((v, i) => { const val = ((a[sb.id] || {}).values || [])[i] || ''; const r = g && g.details[i];
           return `<label class="nv"><span>${esc(v.label)} =</span><input class="inp num ${r ? (r.ok ? 'ok' : 'no') : ''}" data-s="${sb.id}" data-i="${i}" value="${esc(val)}" placeholder="Wert und Einheit${v.unit ? ', z. B. … ' + esc(v.unit) : ''}" autocomplete="off" autocapitalize="off" spellcheck="false" ${graded ? 'disabled' : ''}>${r && !r.ok ? `<small class="bad">${r.reason === 'unit' ? 'Einheit fehlt oder passt nicht' : r.reason === 'format' ? 'Zahl nicht erkannt' : 'Wert stimmt nicht'}</small>` : ''}</label>`; }).join('');
-        return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${g ? g.points + '/' : ''}${sb.points} P · automatisch</span></div>${inputs}${graded ? `<div class="soltxt">Lösung: ${esc(sb.solutionText || '')}</div>` : ''}</div>`;
+        const low = g && (g.autoPoints != null ? g.autoPoints : g.points) < sb.points;
+        return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${g ? g.points + '/' : ''}${sb.points} P · ${g && g.self != null ? 'selbst bewertet' : 'automatisch'}</span></div>${inputs}${graded ? `<div class="soltxt">Lösung: ${esc(sb.solutionText || '')}</div>` : ''}
+          ${low ? `${ai && ai[sb.id] ? `<div class="aisug"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag: ${ai[sb.id].points == null ? 'keine Bewertung' : ai[sb.id].points + '/' + sb.points + ' P'}</b><span>${esc(ai[sb.id].reason || '')}</span>${ai[sb.id].points != null ? `<button class="link" data-aitake="${sb.id}">übernehmen</button>` : ''}</div>` : ''}<div class="self num-self"><span>Auf dem Rechenpapier richtig gerechnet? Selbst bewerten (falsche Folgeergebnisse = 0):</span>${Array.from({ length: sb.points + 1 }, (_, p) => `<button class="pp ${g.self != null && g.self === p ? 'on' : ''}" data-sp="${sb.id}" data-p="${p}">${p}</button>`).join('')}</div>` : ''}</div>`;
       }
       return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${sb.points} P · Selbstkontrolle</span></div>
         <textarea class="inp" rows="2" data-s="${sb.id}" placeholder="Deine Antwort (optional – Rechnung auch auf dem Rechenpapier)" ${graded ? 'disabled' : ''}>${esc((a[sb.id] || {}).text || '')}</textarea>
@@ -478,6 +491,7 @@
       const sp = self && self[sb.id];
       const r = C.gradeSubtask(sb, a[sb.id], sp);
       if (sb.check.kind !== 'number') { r.self = sp == null ? null : sp; if (sp == null) done = false; }
+      else if (sp != null && r.points < sb.points) { r.autoPoints = r.points; r.self = Math.max(0, Math.min(sb.points, +sp)); r.points = Math.max(r.points, r.self); }   // auf Papier gerechnet: selbst bewertet
       g[sb.id] = r; pts += r.points;
     }
     return { g, pts, done };
@@ -490,7 +504,9 @@
       const graded = rec.phase !== 'ask' ? gradeOpen(t, rec.ans, rec.self) : null;
       const selfSubs = t.subtasks.filter(sb => sb.check.kind !== 'number');
       const hasInk = hasWork(t.id);
-      const canAI = graded && rec.phase === 'check' && window.AP2Sync && AP2Sync.session && t.solution.image && selfSubs.length && (hasInk || selfSubs.some(sb => ((rec.ans || {})[sb.id] || {}).text && rec.ans[sb.id].text.trim()));
+      const aiSubs = graded ? t.subtasks.filter(sb => sb.check.kind !== 'number' || (graded.g[sb.id].autoPoints != null ? graded.g[sb.id].autoPoints : graded.g[sb.id].points) < sb.points) : [];
+      const ansText = sb => { const x = (rec.ans || {})[sb.id] || {}; return x.text != null ? x.text : (x.values || []).map((v, i) => v ? `${sb.check.values[i].label} = ${v}` : '').filter(Boolean).join('; '); };
+      const canAI = graded && rec.phase === 'check' && window.AP2Sync && AP2Sync.session && t.solution.image && aiSubs.length && (hasInk || aiSubs.some(sb => ansText(sb).trim()));
       box.innerHTML = `${t.pointsEstimated ? '<p class="muted small">ℹ️ Punkteverteilung geschätzt – das Lösungsheft nennt nur die Gesamtpunktzahl.</p>' : ''}${openPanelHTML(t, rec.ans, graded && graded.g, rec.ai)}
         ${canAI ? `<div class="actions wrap"><button class="btn ghost" id="aiBtn">${rec.ai ? '<svg class="ic"><use href="#i-spark"/></svg> KI erneut fragen' : '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'}</button>${rec.ai ? '<button class="btn ghost" id="aiAll">Alle KI-Punkte übernehmen</button>' : ''}${rec.ai && rec.aiRead ? `<div class="airead"><b><svg class="ic"><use href="#i-pen"/></svg> Das hat die KI auf deinem Rechenpapier gelesen:</b><span>${esc(rec.aiRead)}</span><small class="muted">Falsch gelesen? Dann deutlicher schreiben oder die Antwort ins Feld tippen.</small></div>` : ''}<span class="muted small" id="aiMsg">Vergleicht deine Antworten${hasInk ? ' und dein Rechenpapier' : ''} mit der Musterlösung. Nur ein Vorschlag – du entscheidest.</span></div>` : ''}
         ${graded ? `<div class="fb ${graded.done ? 'good' : 'warn'}"><b>${graded.pts} von ${t.points} Punkten</b>${graded.done ? '' : ' – bitte die Selbstkontroll-Punkte vergeben.'}
@@ -508,8 +524,8 @@
         ab.disabled = true; ab.innerHTML = '<svg class="ic"><use href="#i-spark"/></svg> KI prüft …';
         try {
           const r = await AP2Sync.aiGrade({ taskId: t.id, label: `${t.periodLabel} ${PART_SHORT[t.part]} ${t.label}`, taskImage: t.image, solImage: t.solution.image,
-            subtasks: selfSubs.map(sb => ({ id: sb.id, label: sb.label, points: sb.points, solutionText: sb.solutionText || '' })),
-            answers: Object.fromEntries(selfSubs.map(sb => [sb.id, ((rec.ans || {})[sb.id] || {}).text || ''])), inkImage: await inkFor(t) });
+            subtasks: aiSubs.map(sb => ({ id: sb.id, label: sb.label, points: sb.points, solutionText: sb.solutionText || '' })),
+            answers: Object.fromEntries(aiSubs.map(sb => [sb.id, ansText(sb)])), inkImage: await inkFor(t) });
           rec.ai = {}; r.results.forEach(x => rec.ai[x.id] = { points: x.points, reason: x.reason }); rec.aiModel = r.model; rec.aiRead = r.transcript || '';
           onFinish(rec, null); render(); AP2Toast(`KI-Vorschlag da – heute noch ${Math.max(0, r.remaining)} Anfragen.`);
         } catch (e) { AP2Toast(e.message); ab.disabled = false; ab.innerHTML = '<svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag holen'; }
@@ -559,13 +575,13 @@
       if (!t.gradable) { m.innerHTML = `<div class="card"><h1>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} ${t.label}</h1><p>${esc(t.blockedReason)}</p></div>`; return; }
       const rec = { ans: null, self: {}, phase: 'ask' };
       const lOpts = { tutor: () => rec.phase === 'ask' ? 'hint' : 'full', myAnswer: () => openAnswerText(t, rec) };
-      m.innerHTML = `<div class="task-page"><div class="sess-top"><a class="link" href="#/doc/${t.source.docId}">← ${esc(doc(t.source.docId).partLabel)}</a></div>${taskFrame(t, '<div class="answer card openc"><div id="openBox"></div></div>', lOpts)}</div>`;
+      m.innerHTML = `<div class="task-page"><div class="sess-top"><a class="link" href="#/doc/${t.source.docId}">← ${esc(doc(t.source.docId).partLabel)}</a>${hasWork(t.id) ? `<button class="btn sm fresh-btn" data-fresh="${t.id}"><svg class="ic"><use href="#i-repeat"/></svg> Neues leeres Blatt</button>` : ''}</div>${taskFrame(t, '<div class="answer card openc"><div id="openBox"></div></div>', lOpts)}</div>`;
       wireFrame(t, m, lOpts);
       openWidget(m, t, rec, (r, gr) => { if (gr) { recordOpen(t, r, gr, 'library'); S.save(true); AP2Toast(`${gr.pts}/${t.points} Punkte gespeichert.`); } });
       return;
     }
     let picked = null; const mOpts = { tutor: () => 'full', myAnswer: () => picked ? 'Antwort ' + picked : '' };
-    m.innerHTML = `<div class="task-page"><div class="sess-top"><a class="link" href="#/doc/${t.source.docId}">← ${esc(doc(t.source.docId).partLabel)}</a></div>${taskFrame(t, `<div class="answer card"><p class="q">Freie Übung (ohne Wertung):</p>${optButtons()}<div id="fb"></div>
+    m.innerHTML = `<div class="task-page"><div class="sess-top"><a class="link" href="#/doc/${t.source.docId}">← ${esc(doc(t.source.docId).partLabel)}</a>${hasWork(t.id) ? `<button class="btn sm fresh-btn" data-fresh="${t.id}"><svg class="ic"><use href="#i-repeat"/></svg> Neues leeres Blatt</button>` : ''}</div>${taskFrame(t, `<div class="answer card"><p class="q">Freie Übung (ohne Wertung):</p>${optButtons()}<div id="fb"></div>
       <div class="actions wrap"><button class="btn ghost" id="sol">Lösung zeigen</button><button class="btn ghost" id="tutorExplain"><svg class="ic"><use href="#i-spark"/></svg> Nachfragen</button></div><div id="xpl"></div></div>`, mOpts)}</div>`;
     wireFrame(t, m, mOpts);
     $('#tutorExplain', m).onclick = () => openTutor(t, mOpts, 'explain');
@@ -673,6 +689,7 @@
   function makeExam(docId, strict, endsAt, set) {
     const d = doc(docId); const ts = tasksOf(docId); const id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     st.exams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), answers: {}, flags: {}, deselected: [], cur: 0, started: Date.now(), endsAt, submitted: 0, set: set || null };
+    ts.forEach(t => freshSheet(t.id));
     return id;
   }
   function examGrid(e, mode) {
@@ -830,7 +847,7 @@
     st.bexams = st.bexams || {};
     st.bexams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), recs: Object.fromEntries(ts.map(t => [t.id, { ans: null, self: {}, phase: 'ask' }])), cur: 0, started: Date.now(), endsAt, submitted: 0, result: null, set: set || null };
     // eigenes, leeres Rechenpapier für die Prüfung (vorheriges wird gesichert)
-    ts.forEach(t => { if ((st.ink[t.id] || []).some(pg => pg && pg.length)) { st.inkArchive = st.inkArchive || {}; st.inkArchive[t.id] = st.ink[t.id]; } st.ink[t.id] = [[]]; });
+    ts.forEach(t => freshSheet(t.id));
     return id;
   }
   function bGrid(e, mode) {

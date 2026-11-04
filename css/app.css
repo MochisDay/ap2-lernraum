@@ -540,3 +540,6 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 body.bigpad .sidebar{display:none} body.bigpad #app{grid-template-columns:1fr} body.bigpad main{padding-top:14px}
 @media (max-width:1000px){ body.bigpad #app{grid-template-rows:1fr} .work.big{flex:none} }
 @media (min-width:1001px){ .work.big{height:calc(100dvh - 70px)} }
+
+.num-self{margin-top:4px;padding:8px 10px;border-radius:var(--r-sm);background:var(--surface2)} .num-self span{flex-basis:100%;margin-bottom:2px}
+.sess-top .fresh-btn{margin-left:auto}
