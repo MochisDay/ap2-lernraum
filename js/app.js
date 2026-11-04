@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 32;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 33;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   const hasAnno = id => !!(st.anno && st.anno[id] && st.anno[id].length);
   const hasWork = id => hasAnno(id) || (st.ink[id] || []).some(pg => pg && pg.length);
@@ -143,6 +143,7 @@
     if (anno) { anno.destroy(); anno = null; }
     $$('#windows .win, #windows .tutor-panel').forEach(w => w.remove());
     clearInterval(tick); tick = null;
+    document.body.classList.remove('bigpad');
     const h = ROUTE.replace(/^#\/?/, '');
     const [name, ...rest] = h.split('/');
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (name || 'home')));
@@ -333,7 +334,7 @@
     w.style.setProperty('--left', saved + '%');
     sp.onpointerdown = e => {
       try { sp.setPointerCapture(e.pointerId); } catch (_) {}
-      sp.onpointermove = ev => { const r = w.getBoundingClientRect(); const p = Math.min(80, Math.max(25, 100 * (ev.clientX - r.left) / r.width)); w.style.setProperty('--left', p + '%'); try { localStorage.setItem('ap2.split', p); } catch {} };
+      sp.onpointermove = ev => { const r = w.getBoundingClientRect(); const p = Math.min(80, Math.max(20, 100 * (ev.clientX - r.left) / r.width)); w.style.setProperty('--left', p + '%'); try { localStorage.setItem(w.classList.contains('big') ? 'ap2.splitBig' : 'ap2.split', p); } catch {} };
       sp.onpointerup = () => { sp.onpointermove = null; };
     };
     $('#pinBook').onclick = () => openBook(t.source.docId, t.source.page);
@@ -354,6 +355,16 @@
       });
     }
     pad = AP2Pad.createPad($('#pad'), { pages: st.ink[t.id], grid: st.settings.grid, allowMouse: st.settings.mouseInk, onChange: p => { st.ink[t.id] = p; S.save(); } });
+    // Großes Rechenpapier: links Aufgabe, rechts Schreibfläche – beide getrennt zoombar; Antwortfelder hinter einem Knopf
+    { const bar = $('#pad .pad-bar', m), side = $('.side', m);
+      bar.insertAdjacentHTML('afterbegin', '<div class="seg"><button data-big class="big-btn" title="Rechenpapier groß – Aufgabe links, Schreibfläche rechts"><svg class="ic"><use href="#i-expand"/></svg> <span>Groß</span></button></div>');
+      side.insertAdjacentHTML('beforeend', '<button class="btn ans-toggle" data-ans><svg class="ic"><use href="#i-pen"/></svg> <span>Antwort eingeben</span></button>');
+      const setBig = v => { w.classList.toggle('big', v); w.classList.remove('show-ans'); document.body.classList.toggle('bigpad', v); let k = null; try { k = localStorage.getItem(v ? 'ap2.splitBig' : 'ap2.split'); } catch (_) {} w.style.setProperty('--left', (+k || (v ? 50 : 58)) + '%'); try { localStorage.setItem('ap2.bigPad', v ? '1' : '0'); } catch (_) {} const sp = $('[data-big] span', m); if (sp) sp.textContent = v ? 'Normal' : 'Groß'; $('[data-ans] span', m).textContent = 'Antwort eingeben'; };
+      let big = false; try { big = localStorage.getItem('ap2.bigPad') === '1'; } catch (_) {}
+      setBig(big);
+      $('[data-big]', m).onclick = () => { setBig(!w.classList.contains('big')); setTimeout(() => { const f = $('#pad [data-a="fit"]', m); if (f) f.click(); }, 120); };
+      $('[data-ans]', m).onclick = () => { const on = w.classList.toggle('show-ans'); $('[data-ans] span', m).textContent = on ? 'Antwort ausblenden' : 'Antwort eingeben'; };
+    }
   }
   async function report(t) {
     const txt = await ask({ title: 'Fehler melden', text: `Was stimmt bei ${esc(t.id)} nicht? Die Meldung wird gespeichert und mit der Sicherung exportiert.`, area: true, buttons: [['Speichern', true, 'primary'], ['Abbrechen', false, 'ghost']] });

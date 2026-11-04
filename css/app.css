@@ -514,3 +514,29 @@ body.sym-on .tutor-panel{bottom:calc(var(--symh,0px) + 8px)}
 .set-area p{margin:0 0 4px}
 .set-res .row{margin-bottom:6px}
 .set-pause{margin-bottom:18px}
+
+/* Großes Rechenpapier (2-Fenster-Modus) */
+.ans-toggle{display:none}
+.work.big{--left:46%}
+.work.big .side{position:relative}
+.work.big .side>.answer{display:none}
+.work.big .pad{flex:1 1 auto;min-height:0}
+.work.big .ans-toggle{display:inline-flex;position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;box-shadow:var(--shadow-lift);border-radius:99px;background:var(--ink);color:var(--surface);border-color:transparent}
+.work.big.show-ans .side>.answer{display:block;position:absolute;left:8px;right:8px;bottom:66px;max-height:62%;overflow:auto;z-index:5;box-shadow:var(--shadow-lift);animation:rise .25s var(--ease)}
+.big-btn{display:inline-flex;align-items:center;gap:5px}
+.work.big .big-btn{background:var(--accent)!important;color:var(--accentInk)!important}
+/* Tablet hochkant / Handy: im Groß-Modus trotzdem nebeneinander bzw. groß übereinander */
+@media (max-width:1000px){
+  .work.big{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;height:calc(100dvh - 130px)}
+  .work.big .split{display:none}
+  .work.big .orig-scroll{max-height:none}
+  .work.big .pad{min-height:0}
+  .task-page:has(.work.big){height:auto}
+}
+@media (max-width:700px){
+  .work.big{grid-template-columns:minmax(0,1fr);grid-template-rows:38% 62%;height:calc(100dvh - 120px)}
+}
+
+body.bigpad .sidebar{display:none} body.bigpad #app{grid-template-columns:1fr} body.bigpad main{padding-top:14px}
+@media (max-width:1000px){ body.bigpad #app{grid-template-rows:1fr} .work.big{flex:none} }
+@media (min-width:1001px){ .work.big{height:calc(100dvh - 70px)} }
