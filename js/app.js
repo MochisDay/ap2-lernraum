@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 31;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 32;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   const hasAnno = id => !!(st.anno && st.anno[id] && st.anno[id].length);
   const hasWork = id => hasAnno(id) || (st.ink[id] || []).some(pg => pg && pg.length);
@@ -147,8 +147,9 @@
     const [name, ...rest] = h.split('/');
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (name || 'home')));
     document.body.classList.toggle('focus', ['exam', 'review', 'session', 'duel', 'bexam', 'bcorr'].includes(name));
+    $$('#nav a').forEach(a => { if (name === 'set' && a.dataset.r === 'exams') a.classList.add('on'); });
     const m = $('#main');
-    const views = { '': home, home, mistakes, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
+    const views = { '': home, home, mistakes, set: setView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
     (views[name] || home)(m, rest.map(decodeURIComponent));
     hydrate(m);
     m.scrollTop = 0; m.focus({ preventScroll: true });
@@ -162,9 +163,10 @@
     const tot = seen.reduce((a, t) => { const e = st.srs[t.id]; a.f += e.first; a.h += e.hint; a.w += e.wrong; return a; }, { f: 0, h: 0, w: 0 });
     const n = tot.f + tot.h + tot.w;
     const open = Object.values(st.sessions).filter(s => !s.done).sort((a, b) => b.updated - a.updated);
-    const exOpen = Object.values(st.exams).filter(e => !e.submitted).sort((a, b) => b.started - a.started);
+    const exOpen = Object.values(st.exams).filter(e => !e.submitted && !e.set).sort((a, b) => b.started - a.started);
+    const setsOpen = Object.values(st.sets || {}).filter(setOpen).sort((a, b) => b.created - a.created);
     const exDone = Object.values(st.exams).filter(e => e.submitted).sort((a, b) => b.submitted - a.submitted).slice(0, 5);
-    const bx = Object.values(st.bexams || {}); const bOpen = bx.filter(e => !e.result).sort((a, b) => b.started - a.started); const bDone = bx.filter(e => e.result).sort((a, b) => b.result.at - a.result.at).slice(0, 5);
+    const bx = Object.values(st.bexams || {}); const bOpen = bx.filter(e => !e.result && !e.set).sort((a, b) => b.started - a.started); const bDone = bx.filter(e => e.result).sort((a, b) => b.result.at - a.result.at).slice(0, 5);
     m.innerHTML = `
       <header class="home-h"><div><h1>${greet()}</h1><p>${all.length} Originalaufgaben aus ${periods().length} Prüfungen, alle mit offizieller IHK-Lösung.</p></div></header>
       <div id="duelHint"></div>
@@ -182,7 +184,7 @@
         ${kpi('Mit Hinweis', n ? Math.round(100 * tot.h / n) + '%' : '–', `${tot.w} falsch`)}
       </section>
       <div class="grid2">
-        <section class="card"><h2>Weitermachen</h2>${open.length || exOpen.length || bOpen.length ? '' : '<p class="muted">Keine offenen Sitzungen.</p>'}
+        <section class="card"><h2>Weitermachen</h2>${setsOpen.map(x => { const i = x.areas.findIndex(a => !a.done); const run = x.areas.find(a => a.started && !a.done); return `<div class="resume"><a class="row" href="#/set/${x.id}"><b>${esc(periodLabel(x.period))} komplett</b><span>${run ? AREAS[x.areas.indexOf(run)].label + ' läuft' : 'Pause vor ' + AREAS[i].label}</span><span class="muted">${x.areas.filter(a => a.done).length}/3 Bereiche</span></a><button class="ib del" data-del="p:${x.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`; }).join('')}${setsOpen.length || open.length || exOpen.length || bOpen.length ? '' : '<p class="muted">Keine offenen Sitzungen.</p>'}
           ${bOpen.map(e => `<div class="resume"><a class="row" href="#/${e.submitted ? 'bresult' : 'bexam'}/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.submitted ? 'Korrektur offen' : e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${bProgress(e)}</span></a><button class="ib del" data-del="b:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
           ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.mistakes ? 'Fehlerheft' : s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
           ${exOpen.map(e => `<div class="resume"><a class="row" href="#/exam/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${Object.keys(e.answers).length}/${e.taskIds.length} beantwortet</span></a><button class="ib del" data-del="e:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
@@ -193,9 +195,11 @@
     duelTeaser();
     $$('[data-del]', m).forEach(b => b.onclick = async () => {
       const [k, id] = b.dataset.del.split(':');
-      const what = { s: 'dieses Training', e: 'diese Prüfung', b: 'diese Prüfung' }[k];
+      const what = { s: 'dieses Training', e: 'diese Prüfung', b: 'diese Prüfung', p: 'diese komplette Prüfung' }[k];
       if (!(await ask({ title: `${what[0].toUpperCase() + what.slice(1)} löschen?`, text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
-      if (k === 's') delete st.sessions[id]; else if (k === 'e') delete st.exams[id]; else if (st.bexams) delete st.bexams[id];
+      if (k === 's') delete st.sessions[id]; else if (k === 'e') delete st.exams[id];
+      else if (k === 'p') { const x = (st.sets || {})[id]; if (x) x.areas.forEach(a => { if (a.a) delete st.exams[a.a]; if (a.b && st.bexams) delete st.bexams[a.b]; }); delete st.sets[id]; }
+      else if (st.bexams) delete st.bexams[id];
       S.save(true); AP2Toast('Gelöscht.');
       // Nur die Zeile entfernen statt neu zu zeichnen – so bleibt die Seite an der Stelle stehen
       const row = b.closest('.resume'), card = row.parentElement; row.style.transition = 'opacity .2s'; row.style.opacity = '0';
@@ -231,8 +235,8 @@
   function planCard() {
     const P = planInfo();
     const lcd = (num, unit, top, bot) => `<div class="lcd" role="img" aria-label="${esc(num + ' ' + unit + ', ' + bot)}"><div class="lcd-top"><span>${top}</span><span>AP2</span></div><div class="lcd-num"><span data-ghost="${String(num).replace(/\d/g, '8')}">${num}</span><small>${unit}</small></div><div class="lcd-bot">${bot}</div></div>`;
-    if (!P) return `<section class="meter empty"><div class="meter-r"><h2>Wann ist deine Prüfung?</h2><ul><li>Trag den Prüfungstag ein. Dann siehst du hier jeden Tag dein Tagesziel bis zur Prüfung.</li></ul><div class="actions"><a class="btn primary" href="#/settings">${ic('cal')} Prüfungstag eintragen</a></div></div></section>`;
-    if (P.phase === 'done') return `<section class="meter empty"><div class="meter-r"><h2>Prüfung geschafft?</h2><ul><li>Der eingetragene Prüfungstag ist vorbei. Für den nächsten Termin einfach ein neues Datum eintragen.</li></ul><div class="actions"><a class="btn" href="#/settings">Neues Datum eintragen</a></div></div></section>`;
+    if (!P) return `<section class="meter empty"><div class="meter-r"><h2>Wann ist deine Prüfung?</h2><ul><li><span>Trag den Prüfungstag ein. Dann siehst du hier jeden Tag dein Tagesziel bis zur Prüfung.</span></li></ul><div class="actions"><a class="btn primary" href="#/settings">${ic('cal')} Prüfungstag eintragen</a></div></div></section>`;
+    if (P.phase === 'done') return `<section class="meter empty"><div class="meter-r"><h2>Prüfung geschafft?</h2><ul><li><span>Der eingetragene Prüfungstag ist vorbei. Für den nächsten Termin einfach ein neues Datum eintragen.</span></li></ul><div class="actions"><a class="btn" href="#/settings">Neues Datum eintragen</a></div></div></section>`;
     const segs = 20, on = Math.min(segs, Math.round(segs * P.doneToday / P.goal));
     const tips = {
       learn: [`<b>${P.goalNew} neue Aufgaben</b> am Tag, dann hast du bis zur Prüfung alle ${P.unseen} offenen einmal gesehen.`, P.due ? `<b>${P.due} Wiederholungen</b> sind fällig.` : '', P.simDue ? 'Diese Woche noch keine Prüfung geschrieben. Einmal pro Woche lohnt sich.' : ''],
@@ -562,7 +566,11 @@
   function exams(m) {
     m.innerHTML = `<header class="page-h"><h1>Originalprüfungen</h1><p>Teil A und WiSo (gebundene Aufgaben) in Originalreihenfolge. <b>Übung</b>: pausierbar, Lösungen nach Abgabe. <b>Simulation</b>: Timer läuft weiter (auch nach Neustart), keine Hilfen, Auto-Abgabe bei Zeitablauf.</p>
       <p class="muted small">Offizielle Zeit laut Deckblatt: Systementwurf und FuSA je 105 min für Teil A <i>und</i> B zusammen, WiSo 60 min inkl. ungebundener Aufgaben. Für Teil A allein ist keine offizielle Zeit angegeben – die vorgeschlagene Zeit ist änderbar.</p></header>
-      <button class="btn ghost" id="rnd"><svg class="ic"><use href="#i-dice"/></svg> Zufällige Prüfung</button>
+      <section class="card set-start"><h2>Komplette Prüfung</h2><p class="muted">Alle drei Bereiche eines Termins wie am Prüfungstag: Teil A, abgeben, dann Teil B auf derselben Uhr. Danach Pause oder direkt weiter.</p>
+        <div class="actions wrap"><button class="btn primary" id="setRnd">${ic('dice')} Zufälliger Termin</button></div>
+        <details class="fold"><summary><span>Termin auswählen</span><span class="fold-v">${fullPeriods().length} Termine</span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips">${fullPeriods().map(p => `<button class="chip" data-set="${p}">${esc(periodLabel(p))}</button>`).join('')}</div></details></section>
+      <h2 class="sec-h">Einzelne Teile</h2>
+      <button class="btn ghost" id="rnd"><svg class="ic"><use href="#i-dice"/></svg> Zufälliger Teil</button>
       <div class="exam-list">${periods().map(p => `<section class="card"><h2>${esc(periodLabel(p))}</h2><div class="exam-parts">${MC_PARTS.map(pt => {
         const d = doc(`${p}_${pt}`); if (!d) return ''; const ts = tasksOf(d.id); const g = ts.filter(t => t.gradable).length;
         const best = Object.values(st.exams).filter(e => e.docId === d.id && e.submitted).sort((a, b) => b.score.percent - a.score.percent)[0];
@@ -573,16 +581,88 @@
     $$('[data-book]', m).forEach(b => b.onclick = () => startBook(b.dataset.book));
     $$('[data-bstart]', m).forEach(b => b.onclick = () => startBExam(b.dataset.bstart, b.dataset.strict === '1'));
     $$('[data-start]', m).forEach(b => b.onclick = () => startExam(b.dataset.start, b.dataset.strict === '1'));
+    $('#setRnd').onclick = () => { const ps = fullPeriods(); askSet(ps[Math.floor(Math.random() * ps.length)]); };
+    $$('[data-set]', m).forEach(b => b.onclick = () => askSet(b.dataset.set));
     $('#rnd').onclick = () => { const ds = DOCS.filter(d => MC_PARTS.includes(d.part)); const d = ds[Math.floor(Math.random() * ds.length)]; startExam(d.id, false); };
+  }
+  /* ---------- Komplette Prüfung: je Bereich Teil A, dann Teil B auf gemeinsamer Uhr; dazwischen Pause oder weiter ---------- */
+  const AREAS = [
+    { k: 'SE', a: 'SE_A', b: 'SE_B', min: 105, label: 'Systementwurf' },
+    { k: 'FUSA', a: 'FUSA_A', b: 'FUSA_B', min: 105, label: 'Funktions- und Systemanalyse' },
+    { k: 'WISO', a: 'WISO', b: 'WISO', min: 60, label: 'Wirtschafts- und Sozialkunde' }];
+  const fullPeriods = () => periods().filter(p => AREAS.every(A => doc(`${p}_${A.a}`)));
+  function startSet(period, strict) {
+    if (!fullPeriods().includes(period)) return AP2Toast('Für diesen Termin fehlen Hefte.');
+    const id = 'p' + Date.now().toString(36);
+    st.sets = st.sets || {};
+    st.sets[id] = { id, period, strict, created: Date.now(), areas: AREAS.map(A => ({ k: A.k, a: null, b: null, started: 0, endsAt: 0, done: 0 })), next: 0 };
+    S.save(true); startArea(st.sets[id], 0);
+  }
+  function startArea(set, i) {
+    const A = AREAS[i], ar = set.areas[i];
+    ar.started = Date.now(); ar.endsAt = set.strict ? Date.now() + A.min * 60000 : 0;
+    ar.a = makeExam(`${set.period}_${A.a}`, set.strict, ar.endsAt, set.id);
+    set.next = i; set.justDone = null; S.save(true); go('#/exam/' + ar.a);
+  }
+  function setAfterA(e, auto) {
+    const set = (st.sets || {})[e.set]; if (!set) return go('#/result/' + e.id);
+    const i = set.areas.findIndex(x => x.a === e.id); const ar = set.areas[i], A = AREAS[i];
+    ar.b = makeBExam(`${set.period}_${A.b}`, set.strict, ar.endsAt, set.id);
+    S.save(true);
+    if (!ar.b) return setAreaDone(set.id);
+    if (!auto) AP2Toast('Teil A abgegeben und gesperrt – weiter mit Teil B. Die Uhr läuft weiter.');
+    go('#/bexam/' + ar.b);
+  }
+  function setAreaDone(setId) {
+    const set = (st.sets || {})[setId]; if (!set) return go('#/exams');
+    const i = set.areas.findIndex(x => !x.done && x.started); if (i >= 0) { set.areas[i].done = Date.now(); set.justDone = i; }
+    if (set.areas.every(x => x.done)) set.finished = Date.now();
+    S.save(true); go('#/set/' + setId);
+  }
+  const setOpen = set => !set.finished;
+  function setView(m, [id]) {
+    const set = (st.sets || {})[id]; if (!set) { go('#/exams'); return; }
+    const nextI = set.areas.findIndex(x => !x.done);
+    const running = set.areas.findIndex(x => x.started && !x.done);
+    const left = ar => ar.endsAt ? Math.max(0, Math.round((ar.endsAt - Date.now()) / 60000)) : null;
+    const area = (A, i) => {
+      const ar = set.areas[i], ea = ar.a && st.exams[ar.a], eb = ar.b && (st.bexams || {})[ar.b];
+      let body;
+      if (ar.done) {
+        body = `<div class="set-res">${ea && ea.score ? `<a class="row" href="#/result/${ea.id}"><b>Teil A</b><span>${ea.score.right} von ${ea.score.max} richtig</span><span class="score">${ea.score.percent} %</span></a>` : ''}
+          ${eb ? (eb.result ? `<a class="row" href="#/bresult/${eb.id}"><b>Teil B</b><span>${eb.result.pts} von ${eb.result.max} Punkten</span><span class="score">Note ${eb.result.note}</span></a>` : `<a class="row" href="#/bcorr/${eb.id}/0"><b>Teil B</b><span>abgegeben, noch nicht korrigiert</span><span class="btn sm primary">Korrigieren</span></a>`) : ''}</div>`;
+      } else if (ar.started) {
+        const inB = ea && ea.submitted;
+        body = `<p>${inB ? 'Teil A ist abgegeben und gesperrt. Teil B läuft.' : 'Teil A läuft.'}${ar.endsAt ? ` Noch <b>${left(ar)} min</b> für ${inB ? 'Teil B' : 'Teil A und B'}.` : ''}</p><div class="actions"><a class="btn primary" href="#/${inB ? 'bexam/' + ar.b : 'exam/' + ar.a}">Weiter mit Teil ${inB ? 'B' : 'A'}</a></div>`;
+      } else if (i === nextI && running < 0) {
+        body = `<p class="muted">Teil A (gebunden), danach Teil B (ungebunden) – zusammen ${set.strict ? A.min + ' Minuten' : 'ohne Zeitlimit'}.</p><div class="actions"><button class="btn primary" data-area="${i}">${ic('timer')} ${A.label} starten</button></div>`;
+      } else body = `<p class="muted">Kommt nach ${AREAS[i - 1] ? AREAS[i - 1].label : ''}.</p>`;
+      return `<section class="card set-area ${ar.done ? 'done' : ar.started ? 'run' : ''}"><div class="set-h"><span class="set-no">${i + 1}</span><div><h2>${A.label}</h2><span class="muted small">${set.strict ? A.min + ' min für Teil A und B' : 'ohne Zeitlimit'}</span></div>${ar.done ? `<span class="pill ok">${ic('check')} abgegeben</span>` : ar.started ? '<span class="pill warn">läuft</span>' : ''}</div>${body}</section>`;
+    };
+    const jd = set.justDone, nx = set.areas.findIndex(x => !x.done);
+    m.innerHTML = `<header class="page-h"><a class="link" href="#/exams">← Prüfungen</a><h1>${esc(periodLabel(set.period))} komplett</h1><p>${set.strict ? 'Mit offizieller Zeit: die Uhr läuft auch weiter, wenn du die App schließt.' : 'Ohne Zeitlimit.'} Teil A wird mit der Abgabe gesperrt, erst dann kommt Teil B. Teil B korrigierst du am Ende mit der Musterlösung.</p></header>
+      ${jd != null && nx >= 0 ? `<section class="meter empty set-pause"><div class="meter-r"><h2>${AREAS[jd].label} abgegeben.</h2><ul><li><span>Pause machen oder direkt mit <b>${AREAS[nx].label}</b> weiter? Die Zeit für den nächsten Bereich startet erst, wenn du ihn beginnst.</span></li></ul><div class="actions wrap"><button class="btn primary" data-area="${nx}">${ic('timer')} Direkt weiter: ${AREAS[nx].label}</button><button class="btn" id="setPause">Pause – später weiter</button></div></div></section>` : ''}
+      ${set.finished ? `<section class="meter empty"><div class="meter-r"><h2>Alle drei Prüfungsbereiche abgegeben.</h2><ul><li><span>Teil A ist schon ausgewertet. Jetzt Teil B mit der Musterlösung korrigieren, dann siehst du die Punkte und Noten.</span></li></ul></div></section>` : ''}
+      ${AREAS.map(area).join('')}`;
+    $$('[data-area]', m).forEach(b => b.onclick = () => startArea(set, +b.dataset.area));
+    const sp = $('#setPause'); if (sp) sp.onclick = () => { set.justDone = null; S.save(true); AP2Toast('Pause. Weiter geht es über die Startseite → Weitermachen.'); go('#/'); };
+  }
+  async function askSet(period) {
+    const v = await ask({ title: `${periodLabel(period)} komplett`, text: 'Systementwurf, dann Funktions- und Systemanalyse, dann WiSo – jeweils Teil A und danach Teil B. Zwischen den Bereichen kannst du Pause machen.<br><br>Mit offizieller Zeit: 105 min je Bereich für Teil A und B zusammen, WiSo 60 min.', buttons: [['Mit offizieller Zeit', 'strict', 'primary'], ['Ohne Zeitlimit', 'free', ''], ['Abbrechen', false, 'ghost']] });
+    if (v === 'strict' || v === 'free') startSet(period, v === 'strict');
   }
   async function startExam(docId, strict) {
     const d = doc(docId); const ts = tasksOf(docId);
     const sugg = d.part === 'WISO' ? 45 : 60;
     const v = await ask({ title: `${d.periodLabel} · ${PART_SHORT[d.part]}`, text: `${strict ? 'Simulation' : 'Übung'}: Zeit in Minuten (Vorschlag ${sugg}, 0 = ohne Limit). Offiziell: ${esc(d.officialTime || '')}.`, input: 'number', value: sugg, buttons: [['Starten', true, 'primary'], ['Abbrechen', false, 'ghost']] });
     if (v === false || v == null) return; const mins = +v; if (isNaN(mins)) return;
-    const id = 'e' + Date.now().toString(36);
-    st.exams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), answers: {}, flags: {}, deselected: [], cur: 0, started: Date.now(), endsAt: mins > 0 ? Date.now() + mins * 60000 : 0, submitted: 0 };
+    const id = makeExam(docId, strict, mins > 0 ? Date.now() + mins * 60000 : 0);
     S.save(true); go('#/exam/' + id);
+  }
+  function makeExam(docId, strict, endsAt, set) {
+    const d = doc(docId); const ts = tasksOf(docId); const id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    st.exams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), answers: {}, flags: {}, deselected: [], cur: 0, started: Date.now(), endsAt, submitted: 0, set: set || null };
+    return id;
   }
   function examGrid(e, mode) {
     return `<div class="egrid">${e.taskIds.map((tid, i) => { const x = TASKS[tid]; let c;
@@ -592,11 +672,11 @@
   }
   function exam(m, [id]) {
     const e = st.exams[id]; if (!e) { go('#/exams'); return; }
-    if (e.submitted) { go('#/result/' + id); return; }
+    if (e.submitted) { go(e.set && !e.setReview ? '#/set/' + e.set : '#/result/' + id); return; }
     if (e.endsAt && Date.now() >= e.endsAt) return submitExam(e, true);
     const t = TASKS[e.taskIds[e.cur]];
     m.innerHTML = `<div class="task-page exam-mode">
-      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
+      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.set ? 'Komplette Prüfung' : e.strict ? 'Simulation' : 'Übung'}</span></div>
         ${e.endsAt ? '<span class="timer big" id="timer"></span>' : ''}<span class="muted" id="cnt"></span>
         <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button><button class="btn sm primary" id="sub">Abgeben</button></div></div>
       <div class="ovl" id="ovl" hidden><div class="card"><div class="ovl-h"><b>Übersicht</b><span class="muted small">blau = beantwortet · gelb unterstrichen = unsicher · durchgestrichen = abgewählt · fett = Pflicht</span><button class="ib" id="ovx">✕</button></div><div id="gridBox"></div></div></div>
@@ -627,7 +707,7 @@
     $('#ovx').onclick = () => { $('#ovl').hidden = true; };
     const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) return submitExam(e, true); tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { const open = e.taskIds.filter(x => !e.answers[x] && !e.deselected.includes(TASKS[x].number)).length; const fl = Object.values(e.flags).filter(Boolean).length; if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch offen.` : 'Alle Aufgaben sind beantwortet.') + (fl ? ` ${fl} als unsicher markiert.` : ''), buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) submitExam(e, false); };
-    const pz = $('#pz'); if (pz) pz.onclick = () => { if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go('#/exams'); };
+    const pz = $('#pz'); if (pz) pz.onclick = () => { if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go(e.set ? '#/set/' + e.set : '#/exams'); };
   }
   /* Korrekturdurchgang nach Abgabe: Aufgabe für Aufgabe, mit eigener und offizieller Antwort */
   function review(m, [id, idx]) {
@@ -663,6 +743,7 @@
     e.score = C.scoreExam(ts, e.answers, e.deselected); e.submitted = Date.now(); e.auto = !!auto;
     for (const r of e.score.rows) if (r.graded && r.answer != null) { const t = TASKS[r.id]; st.srs[r.id] = C.updateSrs(st.srs[r.id], r.ok ? 'first' : 'wrong', Date.now()); st.attempts.push({ task: r.id, v: t.version, mode: e.strict ? 'simulation' : 'exam', tries: [r.answer], result: r.ok ? 'first' : 'wrong', at: Date.now() }); }
     S.save(true); if (auto) AP2Toast('Zeit abgelaufen – automatisch abgegeben.');
+    if (e.set) return setAfterA(e, auto);
     go('#/result/' + e.id);
   }
   function result(m, [id]) {
@@ -729,12 +810,17 @@
     const skipped = tasksOf(docId, 'open').length - ts.length;
     const v = await ask({ title: `${d.periodLabel} · ${bPartLabel(d.part)}`, text: `${strict ? 'Simulation' : 'Übung'} mit ${ts.length} Aufgaben (${ts.reduce((a, t) => a + t.points, 0)} Punkte)${skipped ? `, ${skipped} wegen fehlender Scanseite ausgelassen` : ''}. Teil B: keine Abwahl möglich.<br>Zeit in Minuten (Vorschlag ${sugg}, 0 = ohne Limit). Offiziell: ${wiso ? 'WiSo 60 min für gebundene und offene Aufgaben zusammen' : '105 min für Teil A und B zusammen'}.<br>Rechnen kannst du auf dem Rechenpapier; Zahlenergebnisse bitte ins Feld tippen.`, input: 'number', value: sugg, buttons: [['Starten', true, 'primary'], ['Abbrechen', false, 'ghost']] });
     if (v === false || v == null) return; const mins = +v; if (isNaN(mins)) return;
-    const id = 'b' + Date.now().toString(36);
+    const id = makeBExam(docId, strict, mins > 0 ? Date.now() + mins * 60000 : 0);
+    S.save(true); go('#/bexam/' + id);
+  }
+  function makeBExam(docId, strict, endsAt, set) {
+    const d = doc(docId); const ts = tasksOf(docId, 'open').filter(t => t.gradable); if (!ts.length) return null;
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     st.bexams = st.bexams || {};
-    st.bexams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), recs: Object.fromEntries(ts.map(t => [t.id, { ans: null, self: {}, phase: 'ask' }])), cur: 0, started: Date.now(), endsAt: mins > 0 ? Date.now() + mins * 60000 : 0, submitted: 0, result: null };
+    st.bexams[id] = { id, docId, period: d.period, part: d.part, strict, taskIds: ts.map(t => t.id), recs: Object.fromEntries(ts.map(t => [t.id, { ans: null, self: {}, phase: 'ask' }])), cur: 0, started: Date.now(), endsAt, submitted: 0, result: null, set: set || null };
     // eigenes, leeres Rechenpapier für die Prüfung (vorheriges wird gesichert)
     ts.forEach(t => { if ((st.ink[t.id] || []).some(pg => pg && pg.length)) { st.inkArchive = st.inkArchive || {}; st.inkArchive[t.id] = st.ink[t.id]; } st.ink[t.id] = [[]]; });
-    S.save(true); go('#/bexam/' + id);
+    return id;
   }
   function bGrid(e, mode) {
     return `<div class="egrid">${bTasks(e).map((t, i) => { const r = e.recs[t.id];
@@ -747,7 +833,7 @@
     if (e.endsAt && Date.now() >= e.endsAt) return bSubmit(e, true);
     const ts = bTasks(e); e.cur = Math.max(0, Math.min(ts.length - 1, e.cur)); const t = ts[e.cur]; const rec = e.recs[t.id];
     m.innerHTML = `<div class="task-page exam-mode">
-      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.strict ? 'Simulation' : 'Übung'}</span></div>
+      <div class="exam-bar"><button class="back" id="pz"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><div class="eb-l"><b>${esc(periodLabel(e.period))} · ${e.set ? (e.part === 'WISO' ? 'WiSo Teil B (offen)' : bPartLabel(e.part)) : bPartLabel(e.part)}</b><span class="pill ${e.strict ? 'warn' : ''}">${e.set ? 'Komplette Prüfung · Teil A gesperrt' : e.strict ? 'Simulation' : 'Übung'}</span></div>
         ${e.endsAt ? '<span class="timer big" id="timer"></span>' : ''}<span class="muted" id="cnt">${bProgress(e)}</span>
         <div class="eb-r"><button class="btn sm ghost" id="ov">▦ Übersicht</button><button class="btn sm primary" id="sub">Abgeben</button></div></div>
       <div class="ovl" id="ovl" hidden><div class="card"><div class="ovl-h"><b>Übersicht</b><span class="muted small">blau = bearbeitet</span><button class="ib" id="ovx">✕</button></div>${bGrid(e)}</div></div>
@@ -764,7 +850,7 @@
     $('#nxt').onclick = () => e.cur + 1 < ts.length ? nav(e.cur + 1) : $('#sub').click();
     $$('#ovl [data-go]', m).forEach(b => b.onclick = () => nav(+b.dataset.go));
     $('#ov').onclick = () => { $('#ovl').hidden = !$('#ovl').hidden; }; $('#ovx').onclick = () => { $('#ovl').hidden = true; };
-    const pz = $('#pz'); if (pz) pz.onclick = () => { keep(); if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go('#/exams'); };
+    const pz = $('#pz'); if (pz) pz.onclick = () => { keep(); if (e.strict) AP2Toast('Gespeichert. Bei der Simulation läuft die Zeit weiter.'); go(e.set ? '#/set/' + e.set : '#/exams'); };
     const tm = $('#timer'); if (tm) { const upd = () => { const r = e.endsAt - Date.now(); if (r <= 0) { keep(); return bSubmit(e, true); } tm.textContent = fmt(r); tm.classList.toggle('low', r < 300000); }; upd(); tick = setInterval(upd, 1000); }
     $('#sub').onclick = async () => { keep(); const open = ts.filter(x => !bHasAnswer(e, x)).length;
       if (await ask({ title: 'Prüfung abgeben?', text: (open ? `${open} Aufgaben sind noch ohne Antwort.` : 'Alle Aufgaben bearbeitet.') + ' Danach korrigierst du Aufgabe für Aufgabe mit der Musterlösung.', buttons: [['Abgeben', true, 'primary'], ['Weiter bearbeiten', false, 'ghost']] })) bSubmit(e, false); };
@@ -772,7 +858,9 @@
   function bSubmit(e, auto) {
     e.submitted = Date.now(); e.cur = 0;
     bTasks(e).forEach(t => { const r = e.recs[t.id]; r.ans = r.ans || {}; r.phase = 'check'; r.self = r.self || {}; });
-    S.save(true); if (auto) AP2Toast('Zeit abgelaufen – automatisch abgegeben.'); go(`#/bcorr/${e.id}/0`);
+    S.save(true); if (auto) AP2Toast('Zeit abgelaufen – automatisch abgegeben.');
+    if (e.set) return setAreaDone(e.set);
+    go(`#/bcorr/${e.id}/0`);
   }
   function bFinish(e) {
     const ts = bTasks(e); if (!ts.every(t => e.recs[t.id].phase === 'done')) return;
@@ -1110,7 +1198,7 @@
       if (v === false || v == null) return;
       if (String(v).trim().toLowerCase() !== 'null' && String(v).trim() !== '0') return AP2Toast('Nicht zurückgesetzt – bitte „null“ eintippen.');
       S.backup('vor-zuruecksetzen');
-      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, open: {}, ink: {}, anno: {}, duelPlay: {} });
+      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, sets: {}, open: {}, ink: {}, anno: {}, duelPlay: {} });
       for (const k in TUTOR) delete TUTOR[k];
       S.save(true); AP2Toast('Lernstand ist auf 0. Die Sicherung davor findest du unter „Sicherung“.'); go('#/');
     };
