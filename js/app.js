@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 34;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 35;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -469,7 +469,7 @@
           return `<label class="nv"><span>${esc(v.label)} =</span><input class="inp num ${r ? (r.ok ? 'ok' : 'no') : ''}" data-s="${sb.id}" data-i="${i}" value="${esc(val)}" placeholder="Wert und Einheit${v.unit ? ', z. B. … ' + esc(v.unit) : ''}" autocomplete="off" autocapitalize="off" spellcheck="false" ${graded ? 'disabled' : ''}>${r && !r.ok ? `<small class="bad">${r.reason === 'unit' ? 'Einheit fehlt oder passt nicht' : r.reason === 'format' ? 'Zahl nicht erkannt' : 'Wert stimmt nicht'}</small>` : ''}</label>`; }).join('');
         const low = g && (g.autoPoints != null ? g.autoPoints : g.points) < sb.points;
         return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${g ? g.points + '/' : ''}${sb.points} P · ${g && g.self != null ? 'selbst bewertet' : 'automatisch'}</span></div>${inputs}${graded ? `<div class="soltxt">Lösung: ${esc(sb.solutionText || '')}</div>` : ''}
-          ${low ? `${ai && ai[sb.id] ? `<div class="aisug"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag: ${ai[sb.id].points == null ? 'keine Bewertung' : ai[sb.id].points + '/' + sb.points + ' P'}</b><span>${esc(ai[sb.id].reason || '')}</span>${ai[sb.id].points != null ? `<button class="link" data-aitake="${sb.id}">übernehmen</button>` : ''}</div>` : ''}<div class="self num-self"><span>Auf dem Rechenpapier richtig gerechnet? Selbst bewerten (falsche Folgeergebnisse = 0):</span>${Array.from({ length: sb.points + 1 }, (_, p) => `<button class="pp ${g.self != null && g.self === p ? 'on' : ''}" data-sp="${sb.id}" data-p="${p}">${p}</button>`).join('')}</div>` : ''}</div>`;
+          ${g ? `${low && ai && ai[sb.id] ? `<div class="aisug"><b><svg class="ic"><use href="#i-spark"/></svg> KI-Vorschlag: ${ai[sb.id].points == null ? 'keine Bewertung' : ai[sb.id].points + '/' + sb.points + ' P'}</b><span>${esc(ai[sb.id].reason || '')}</span>${ai[sb.id].points != null ? `<button class="link" data-aitake="${sb.id}">übernehmen</button>` : ''}</div>` : ''}<div class="self num-self"><span>${low ? 'Auf dem Rechenpapier richtig gerechnet? Selbst bewerten' : 'Automatisch gewertet – bei Bedarf selbst anpassen'} (falsche Folgeergebnisse = 0):</span>${Array.from({ length: sb.points + 1 }, (_, p) => `<button class="pp ${g.self != null && g.self === p ? 'on' : ''}" data-sp="${sb.id}" data-p="${p}">${p}</button>`).join('')}</div>` : ''}</div>`;
       }
       return `<div class="sub"><div class="sub-h"><b>${esc(sb.label)}</b><span class="pts">${sb.points} P · Selbstkontrolle</span></div>
         <textarea class="inp" rows="2" data-s="${sb.id}" placeholder="Deine Antwort (optional – Rechnung auch auf dem Rechenpapier)" ${graded ? 'disabled' : ''}>${esc((a[sb.id] || {}).text || '')}</textarea>
@@ -491,7 +491,7 @@
       const sp = self && self[sb.id];
       const r = C.gradeSubtask(sb, a[sb.id], sp);
       if (sb.check.kind !== 'number') { r.self = sp == null ? null : sp; if (sp == null) done = false; }
-      else if (sp != null && r.points < sb.points) { r.autoPoints = r.points; r.self = Math.max(0, Math.min(sb.points, +sp)); r.points = Math.max(r.points, r.self); }   // auf Papier gerechnet: selbst bewertet
+      else if (sp != null) { r.autoPoints = r.points; r.self = Math.max(0, Math.min(sb.points, +sp)); r.points = r.self; }   // Selbstbewertung ersetzt die automatische Wertung (nach oben und unten)
       g[sb.id] = r; pts += r.points;
     }
     return { g, pts, done };
