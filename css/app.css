@@ -543,3 +543,15 @@ body.bigpad .sidebar{display:none} body.bigpad #app{grid-template-columns:1fr} b
 
 .num-self{margin-top:4px;padding:8px 10px;border-radius:var(--r-sm);background:var(--surface2)} .num-self span{flex-basis:100%;margin-bottom:2px}
 .sess-top .fresh-btn{margin-left:auto}
+
+/* Gesamtnote */
+.grade-card .tbl td:nth-child(n+2){white-space:nowrap}
+.grade-card tr.sum td{font-weight:700;border-top:2px solid var(--line2)}
+.grade-big{display:flex;flex-direction:column;gap:6px;margin:16px 0 8px;padding:14px 16px;border-radius:var(--r-md);font-size:16px}
+.grade-big.ok{background:var(--goodBg);color:var(--good)} .grade-big.no{background:var(--badBg);color:var(--bad)}
+.grade-big span{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--ink)} .grade-big span:first-child{font-weight:700;color:inherit}
+.why{margin:6px 0 10px;padding-left:20px;color:var(--bad)}
+.grade-in{display:flex;flex-wrap:wrap;gap:10px 18px;margin:14px 0 8px}
+.grade-in label{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.grade-in .inp{width:84px;padding:7px 10px}
+@media (max-width:600px){.grade-card .tbl{font-size:13px} .grade-card .tbl th:nth-child(5),.grade-card .tbl td:nth-child(5){display:none}}

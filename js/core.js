@@ -195,5 +195,25 @@
     const T = [[92, 1, 'sehr gut'], [81, 2, 'gut'], [67, 3, 'befriedigend'], [50, 4, 'ausreichend'], [30, 5, 'mangelhaft'], [0, 6, 'ungenügend']];
     const r = T.find(x => p >= x[0]); return { note: r[1], label: r[2], passed: p >= 50 };
   }
-  return { ihkGrade, parseQuantity, checkNumber, unitInfo, gradeSubtask, DAY, INTERVALS, gradableTasks, gradeMC, outcome, updateSrs, hintEliminate, pickSession, scoreExam, migrate, stats, shuffle, SCHEMA };
+  /** Gesamtergebnis nach IHK (Elektroniker/-in für Betriebstechnik, Teil 1 40 %, Teil 2 60 %;
+      Teil 2: Arbeitsauftrag 50 %, Systementwurf 20 %, Funktions- und Systemanalyse 20 %, WiSo 10 %).
+      Bestehen: Gesamt >= 50, Arbeitsauftrag >= 50, schriftliche Bereiche zusammen >= 50, davon zwei >= 50 und keiner unter 30 (ungenügend).
+      area(a, b, wA): Teil A und B eines Bereichs (je 0–100 %) zu einem Bereichsergebnis; wA = Anteil Teil A (Annahme, nicht veröffentlicht). */
+  function areaResult(aPct, bPct, wA) { const w = wA == null ? 0.5 : wA; return Math.round(10 * (w * aPct + (1 - w) * bPct)) / 10; }
+  function finalResult(r) {
+    const w = { se: 20, fusa: 20, wiso: 10 };
+    const areas = ['se', 'fusa', 'wiso'].map(k => ({ k, p: r[k], g: ihkGrade(r[k]) }));
+    const written = Math.round(10 * (w.se * r.se + w.fusa * r.fusa + w.wiso * r.wiso) / 50) / 10;
+    const okAreas = areas.filter(x => x.p >= 50).length, ungen = areas.filter(x => x.p < 30).length;
+    const writtenPass = written >= 50 && okAreas >= 2 && ungen === 0;
+    const out = { areas, written, writtenGrade: ihkGrade(written), writtenPass, okAreas, ungen };
+    if (r.t1 != null && r.aa != null) {
+      out.teil2 = Math.round(10 * (0.5 * r.aa + 0.2 * r.se + 0.2 * r.fusa + 0.1 * r.wiso)) / 10;
+      out.total = Math.round(10 * (0.4 * r.t1 + 0.6 * out.teil2)) / 10;
+      out.totalGrade = ihkGrade(out.total);
+      out.pass = out.total >= 50 && r.aa >= 50 && writtenPass;
+    }
+    return out;
+  }
+  return { areaResult, finalResult, ihkGrade, parseQuantity, checkNumber, unitInfo, gradeSubtask, DAY, INTERVALS, gradableTasks, gradeMC, outcome, updateSrs, hintEliminate, pickSession, scoreExam, migrate, stats, shuffle, SCHEMA };
 });

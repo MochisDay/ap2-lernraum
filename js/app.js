@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 35;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 36;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -670,9 +670,53 @@
     m.innerHTML = `<header class="page-h"><a class="link" href="#/exams">← Prüfungen</a><h1>${esc(periodLabel(set.period))} komplett</h1><p>${set.strict ? 'Mit offizieller Zeit: die Uhr läuft auch weiter, wenn du die App schließt.' : 'Ohne Zeitlimit.'} Teil A wird mit der Abgabe gesperrt, erst dann kommt Teil B. Teil B korrigierst du am Ende mit der Musterlösung.</p></header>
       ${jd != null && nx >= 0 ? `<section class="meter empty set-pause"><div class="meter-r"><h2>${AREAS[jd].label} abgegeben.</h2><ul><li><span>Pause machen oder direkt mit <b>${AREAS[nx].label}</b> weiter? Die Zeit für den nächsten Bereich startet erst, wenn du ihn beginnst.</span></li></ul><div class="actions wrap"><button class="btn primary" data-area="${nx}">${ic('timer')} Direkt weiter: ${AREAS[nx].label}</button><button class="btn" id="setPause">Pause – später weiter</button></div></div></section>` : ''}
       ${set.finished ? `<section class="meter empty"><div class="meter-r"><h2>Alle drei Prüfungsbereiche abgegeben.</h2><ul><li><span>Teil A ist schon ausgewertet. Jetzt Teil B mit der Musterlösung korrigieren, dann siehst du die Punkte und Noten.</span></li></ul></div></section>` : ''}
+      ${set.finished ? gradeCard(set) : ''}
       ${AREAS.map(area).join('')}`;
     $$('[data-area]', m).forEach(b => b.onclick = () => startArea(set, +b.dataset.area));
+    $$('[data-gs]', m).forEach(inp => inp.onchange = () => { const v = inp.value.trim().replace(',', '.'); st.settings[inp.dataset.gs] = v === '' ? null : Math.max(0, Math.min(100, +v)); S.save(true); route(); });
     const sp = $('#setPause'); if (sp) sp.onclick = () => { set.justDone = null; S.save(true); AP2Toast('Pause. Weiter geht es über die Startseite → Weitermachen.'); go('#/'); };
+  }
+  // Ergebnis eines Bereichs: Teil A (% richtig) und Teil B (% der Punkte); WiSo Teil B: nur 5 der 6 offenen Aufgaben zählen (die beste Auswahl)
+  function setAreaPct(set, i) {
+    const ar = set.areas[i], ea = ar.a && st.exams[ar.a], eb = ar.b && (st.bexams || {})[ar.b];
+    const a = ea && ea.score ? ea.score.percent : null;
+    let b = null, bOpen = false;
+    if (eb) {
+      const ts = bTasks(eb); if (!eb.result) bOpen = true;
+      else { let rows = ts.map(t => ({ p: eb.recs[t.id].pts || 0, m: t.points }));
+        if (eb.part === 'WISO' && rows.length > 5) rows = rows.sort((x, y) => (y.p - x.p) || (y.m - x.m)).slice(0, 5);
+        const mx = rows.reduce((q, r) => q + r.m, 0); b = mx ? Math.round(1000 * rows.reduce((q, r) => q + r.p, 0) / mx) / 10 : 0; }
+    }
+    const wA = (st.settings.gradeA == null ? 50 : st.settings.gradeA) / 100;
+    const total = a == null ? null : b == null ? (eb ? null : a) : C.areaResult(a, b, wA);
+    return { a, b, bOpen, total };
+  }
+  function gradeCard(set) {
+    const res = AREAS.map((A, i) => setAreaPct(set, i));
+    const gv = k => st.settings[k] == null ? '' : st.settings[k];
+    const inputs = `<div class="grade-in"><label>Anteil Teil A je Bereich <input class="inp" type="number" min="0" max="100" data-gs="gradeA" value="${st.settings.gradeA == null ? 50 : st.settings.gradeA}"> %</label>
+      <label>Dein Ergebnis Teil 1 <input class="inp" type="number" min="0" max="100" data-gs="t1" value="${gv('t1')}" placeholder="z. B. 72"> Punkte</label>
+      <label>Arbeitsauftrag (geschätzt) <input class="inp" type="number" min="0" max="100" data-gs="aa" value="${gv('aa')}" placeholder="z. B. 70"> Punkte</label></div>`;
+    if (res.some(r => r.total == null)) return `<section class="card grade-card"><h2>Gesamtnote</h2><p>Sobald du Teil B aller drei Bereiche korrigiert hast, steht hier deine Note nach IHK-Schlüssel – je Bereich, für den schriftlichen Teil und mit Teil 1 und Arbeitsauftrag auch insgesamt.</p></section>`;
+    const F = C.finalResult({ se: res[0].total, fusa: res[1].total, wiso: res[2].total, t1: st.settings.t1, aa: st.settings.aa });
+    const g = (p, gr) => `<b>${p.toLocaleString('de-DE')}</b> P · Note ${gr.note} <span class="muted">(${gr.label})</span>`;
+    const why = [];
+    if (F.written < 50) why.push('Die drei schriftlichen Bereiche zusammen liegen unter 50 Punkten.');
+    if (F.okAreas < 2) why.push('Weniger als zwei Bereiche sind mindestens ausreichend (50 Punkte).');
+    if (F.ungen) why.push('Ein Bereich liegt unter 30 Punkten (ungenügend) – das darf nicht sein.');
+    if (F.total != null && F.total < 50) why.push('Das Gesamtergebnis liegt unter 50 Punkten.');
+    if (st.settings.aa != null && st.settings.aa < 50) why.push('Der Arbeitsauftrag muss mindestens 50 Punkte haben.');
+    const oral = !F.writtenPass && F.areas.some(x => x.p < 50 && x.p >= 30);
+    return `<section class="card grade-card"><h2>Gesamtnote nach IHK</h2>
+      <table class="tbl"><thead><tr><th>Bereich</th><th>Teil A</th><th>Teil B</th><th>Ergebnis</th><th>Gewicht</th></tr></thead><tbody>
+      ${AREAS.map((A, i) => `<tr><td>${A.label}</td><td>${res[i].a} %</td><td>${res[i].b == null ? '–' : res[i].b + ' %'}</td><td>${g(res[i].total, C.ihkGrade(res[i].total))}</td><td>${[20, 20, 10][i]} %</td></tr>`).join('')}
+      <tr class="sum"><td>Schriftlich gesamt</td><td></td><td></td><td>${g(F.written, F.writtenGrade)}</td><td>50 %</td></tr></tbody></table>
+      <div class="grade-big ${F.writtenPass ? 'ok' : 'no'}"><span>${F.writtenPass ? ic('check') + ' Schriftlicher Teil bestanden' : ic('warn') + ' Schriftlicher Teil so nicht bestanden'}</span>
+        ${F.total != null ? `<span>Gesamtnote mit Teil 1 und Arbeitsauftrag: ${g(F.total, F.totalGrade)} – ${F.pass ? '<b>bestanden</b>' : '<b>nicht bestanden</b>'}</span>` : '<span class="muted small">Für die Gesamtnote unten dein Ergebnis aus Teil 1 und eine Schätzung für den Arbeitsauftrag eintragen.</span>'}</div>
+      ${why.length ? `<ul class="why">${why.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+      ${oral ? '<p class="small">Liegt ein schriftlicher Bereich knapp darunter, kann eine <b>mündliche Ergänzungsprüfung</b> (ca. 15 min) den Ausschlag geben – schriftlich und mündlich zählen dann 2:1.</p>' : ''}
+      ${inputs}
+      <p class="muted small">So rechnet die App: Teil 1 zählt 40 %, Teil 2 60 %. In Teil 2 zählen Arbeitsauftrag 50 %, Systementwurf 20 %, Funktions- und Systemanalyse 20 %, WiSo 10 %. Notenschlüssel: ab 92 sehr gut, ab 81 gut, ab 67 befriedigend, ab 50 ausreichend, ab 30 mangelhaft. Quelle: IHK, Erläuterungen zum Prüfungsverfahren Elektroniker/-in für Betriebstechnik. <b>Annahme:</b> Wie Teil A und Teil B innerhalb eines Bereichs verrechnet werden, ist nicht veröffentlicht – die App nimmt standardmäßig 50 : 50 an (oben änderbar). Teil A wird in % richtig der 25 (WiSo 15) gewerteten Aufgaben gemessen, WiSo Teil B mit den besten 5 von 6 offenen Aufgaben.</p></section>`;
   }
   async function askSet(period) {
     const v = await ask({ title: `${periodLabel(period)} komplett`, text: 'Systementwurf, dann Funktions- und Systemanalyse, dann WiSo – jeweils Teil A und danach Teil B. Zwischen den Bereichen kannst du Pause machen.<br><br>Mit offizieller Zeit: 105 min je Bereich für Teil A und B zusammen, WiSo 60 min.', buttons: [['Mit offizieller Zeit', 'strict', 'primary'], ['Ohne Zeitlimit', 'free', ''], ['Abbrechen', false, 'ghost']] });
