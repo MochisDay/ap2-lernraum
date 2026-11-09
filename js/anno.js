@@ -13,13 +13,13 @@
     const cv = document.createElement('canvas'); cv.className = 'anno-cv';
     scroller.appendChild(cv);
     const ctx = cv.getContext('2d');   // kein „desynchronized“: zeichnet auf manchen Android-Tablets schwarz
-    let W = 1, H = 1, dpr = 1;
+    let W = 1, H = 1, dpr = 1, lastPen = 0;   // lastPen: Handballen kurz nach dem Stift verschiebt das Bild nicht
 
     function sync() {
       if (!img.complete || !img.offsetWidth) return;
       W = img.offsetWidth; H = img.offsetHeight;
       Object.assign(cv.style, { left: img.offsetLeft + 'px', top: img.offsetTop + 'px', width: W + 'px', height: H + 'px' });
-      dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(12e6 / (W * H)));   // Leinwand nicht zu groß (iPad-Grenze)
+      dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(6e6 / (W * H)));   // Leinwand nicht zu groß (iPad-Grenze)
       const cw = Math.round(W * dpr), ch = Math.round(H * dpr);
       if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
       draw();
@@ -54,9 +54,10 @@
       e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       const [x, y] = pt(e); undo.push(JSON.stringify(strokes)); if (undo.length > 50) undo.shift();
       if (tool === 'erase') { cur = { erase: true, hit: eraseAt(x, y) }; if (cur.hit) draw(); return; }
-      cur = { c: color, w: 3.4, p: [[x, y]] }; draw();
+      cur = { c: color, w: 3.4, p: [[x, y]] }; cv.style.touchAction = 'none'; draw();
     });
     cv.addEventListener('pointermove', e => {
+      if (e.pointerType === 'pen') lastPen = Date.now();
       if (!cur || !canDraw(e)) return; e.preventDefault();
       const ce = e.getCoalescedEvents ? e.getCoalescedEvents() : []; const evs = ce.length ? ce : [e];
       if (cur.erase) { evs.forEach(ev => { const [x, y] = pt(ev); if (eraseAt(x, y)) cur.hit = true; }); if (cur.hit) draw(); return; }
@@ -68,15 +69,19 @@
       }
     });
     const end = e => {
+      if (e.pointerType === 'pen') lastPen = Date.now();
       if (!cur) return;
       if (cur.erase) { if (cur.hit) changed(); else undo.pop(); }
       else { strokes.push(cur); changed(); }
-      cur = null; draw();
+      cur = null; cv.style.touchAction = on && finger ? 'none' : 'pan-x pan-y'; draw();
     };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     // Apple Pencil: Scrollen verhindern, solange gezeichnet wird; Finger scrollen normal
-    cv.addEventListener('touchstart', e => { if (on && ([...e.changedTouches].some(t => t.touchType === 'stylus') || (finger && e.touches.length === 1))) e.preventDefault(); }, { passive: false });
-    cv.addEventListener('touchmove', e => { if (on && ([...e.changedTouches].some(t => t.touchType === 'stylus') || (finger && e.touches.length === 1))) e.preventDefault(); }, { passive: false });
+    // Android (S Pen): Stift erzeugt zusätzlich Touch-Ereignisse, die sonst das Bild verschieben. Pointer-Ereignisse kommen
+    // vorher an – läuft schon ein Strich (cur), wird das Scrollen hier unterdrückt.
+    const block = e => on && (cur || Date.now() - lastPen < 600 || [...e.changedTouches].some(t => t.touchType === 'stylus') || (finger && e.touches.length === 1));
+    cv.addEventListener('touchstart', e => { if (block(e)) e.preventDefault(); }, { passive: false });
+    cv.addEventListener('touchmove', e => { if (block(e)) e.preventDefault(); }, { passive: false });
 
     const ro = 'ResizeObserver' in window ? new ResizeObserver(() => sync()) : null; if (ro) ro.observe(img);
     img.addEventListener('load', sync);

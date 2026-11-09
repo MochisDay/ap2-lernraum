@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 39;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 40;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
