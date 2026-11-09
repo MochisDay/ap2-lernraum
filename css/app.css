@@ -603,3 +603,6 @@ h1{hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
 .pad-bar::-webkit-scrollbar{display:none}
 .pad-bar>*{flex:0 0 auto}
 @media (min-width:1001px){ .work:not(.big) .pad{flex:1 0 400px} }
+/* Alles durcharbeiten */
+.all-card .cnt{font-variant-numeric:tabular-nums;margin-left:6px;padding:1px 8px;border-radius:99px;background:var(--line2);font-size:.85em}
+.sprog{flex:1;min-width:120px;max-width:360px;height:6px;border-radius:9px;background:var(--line2);overflow:hidden} .sprog i{display:block;height:100%;background:var(--gm,#42a230)}

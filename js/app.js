@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 40;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 41;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -197,7 +197,7 @@
       <div class="grid2">
         <section class="card"><h2>Weitermachen</h2>${setsOpen.map(x => { const i = x.areas.findIndex(a => !a.done); const run = x.areas.find(a => a.started && !a.done); return `<div class="resume"><a class="row" href="#/set/${x.id}"><b>${esc(periodLabel(x.period))} komplett</b><span>${run ? AREAS[x.areas.indexOf(run)].label + ' läuft' : 'Pause vor ' + AREAS[i].label}</span><span class="muted">${x.areas.filter(a => a.done).length}/3 Bereiche</span></a><button class="ib del" data-del="p:${x.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`; }).join('')}${setsOpen.length || open.length || exOpen.length || bOpen.length ? '' : '<p class="muted">Keine offenen Sitzungen.</p>'}
           ${bOpen.map(e => `<div class="resume"><a class="row" href="#/${e.submitted ? 'bresult' : 'bexam'}/${e.id}"><b>${esc(periodLabel(e.period))} · ${bPartLabel(e.part)}</b><span>${e.submitted ? 'Korrektur offen' : e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${bProgress(e)}</span></a><button class="ib del" data-del="b:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
-          ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.mistakes ? 'Fehlerheft' : s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
+          ${open.map(s => `<div class="resume"><a class="row" href="#/session/${s.id}"><b>${s.pool ? POOL_NAME[s.pool] : s.mistakes ? 'Fehlerheft' : s.topic ? esc((REG.topics || {})[s.topic] || 'Thema') : 'Schnelltraining'}</b><span>${s.idx}/${s.items.length} Aufgaben</span><span class="muted">${new Date(s.updated).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></a><button class="ib del" data-del="s:${s.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
           ${exOpen.map(e => `<div class="resume"><a class="row" href="#/exam/${e.id}"><b>${esc(periodLabel(e.period))} · ${PART_SHORT[e.part]}</b><span>${e.strict ? 'Simulation' : 'Übung'}</span><span class="muted">${Object.keys(e.answers).length}/${e.taskIds.length} beantwortet</span></a><button class="ib del" data-del="e:${e.id}" aria-label="Löschen" title="Löschen"><svg class="ic"><use href="#i-trash"/></svg></button></div>`).join('')}
         </section>
         <section class="card"><h2>Stärken &amp; Schwächen</h2>${partBars()}</section>
@@ -279,6 +279,32 @@
     }).join('');
   }
 
+  /* ---------- Alles durcharbeiten: alle unbearbeiteten bzw. alle gemerkten Aufgaben, ohne Anzahl und ohne Zeit ---------- */
+  const POOL_NAME = { new: 'Alle unbearbeiteten', marked: 'Alle gemerkten' };
+  function poolIds(kind, f) {
+    let ts = gradable();
+    if (f.parts.length) ts = ts.filter(t => f.parts.includes(t.part));
+    if (f.types.length) ts = ts.filter(t => f.types.includes(t.type || 'mc'));
+    if (f.periods.length) ts = ts.filter(t => f.periods.includes(t.period));
+    if (f.topics.length) ts = ts.filter(t => f.topics.includes(t.topic));
+    if (kind === 'new') return C.shuffle(ts.filter(t => !(st.srs[t.id] && st.srs[t.id].seen))).map(t => t.id);
+    return ts.filter(t => isMarked(t.id)).sort((a, b) => st.marked[a.id] - st.marked[b.id]).map(t => t.id);   // gemerkte: älteste zuerst
+  }
+  function startPool(kind, f) {
+    const key = JSON.stringify(f);
+    const run = Object.values(st.sessions).find(x => !x.done && x.pool === kind && x.poolKey === key);
+    if (run) return go('#/session/' + run.id);   // gleiche Auswahl läuft schon → dort weitermachen
+    const ids = poolIds(kind, f);
+    if (!ids.length) return AP2Toast(kind === 'new' ? 'Mit diesen Filtern hast du schon alles bearbeitet.' : 'Keine gemerkten Aufgaben mit diesen Filtern.');
+    const id = 's' + Date.now().toString(36);
+    st.sessions[id] = { id, items: ids.map(t => ({ id: t, tries: [], result: null })), idx: 0, created: Date.now(), updated: Date.now(), done: false, endsAt: 0, pool: kind, poolKey: key };
+    S.save(true); go('#/session/' + id);
+  }
+  // Fortschritt: bei langen Durchgängen Balken statt Punkte
+  const sessDots = s => s.items.length > 40
+    ? `<div class="sprog"><i style="width:${Math.round(100 * s.idx / s.items.length)}%"></i></div>`
+    : `<div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>`;
+
   /* ---------- Schnelltraining ---------- */
   function training(m) {
     const ps = periods();
@@ -291,7 +317,9 @@
         <details class="fold"><summary><span>Prüfungstermine</span><span class="fold-v" data-sum="pers"></span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips" id="pers"><button class="chip on" data-all="1">Alle</button>${ps.map(p => `<button class="chip" data-per="${p}">${esc(periodLabel(p))}</button>`).join('')}</div></details>
         <label>Zeitlimit (optional)</label><div class="seg" id="tl"><button data-t="0" class="on">ohne</button><button data-t="1">Challenge: 2 min/Aufgabe</button></div>
         <div class="actions go-bar"><button class="btn primary lg" id="go">${ic('bolt')} Training starten</button></div>
-      </section>`;
+      </section>
+      <section class="card all-card"><h2>Alles durcharbeiten</h2><p class="muted">Wie in der Fahrschul-App: Aufgabe für Aufgabe ohne Anzahl und ohne Zeit. Es gelten die Filter oben (Aufgabenart, Bereiche, Themen, Prüfungstermine). Du kannst jederzeit aufhören und später weitermachen.</p>
+        <div class="actions wrap"><button class="btn lg" id="allNew">${ic('bolt')} Noch nicht bearbeitet <b class="cnt" id="cNew"></b></button><button class="btn lg" id="allMarked"><svg class="ic"><use href="#i-star"/></svg> Gemerkte <b class="cnt" id="cMarked"></b></button></div></section>`;
     const sum = () => {
       if (!$("[data-sum=\"parts\"]")) return;
       const allP = MC_PARTS.concat(OPEN_PARTS).length, onP = $$('#parts .on');
@@ -299,7 +327,11 @@
       const tp = $$('#topics .on'); const ts = $('[data-sum="topics"]'); if (ts) ts.textContent = tp.length ? (tp.length === 1 ? tp[0].textContent : tp.length + ' gewählt') : 'Alle';
       const pr = $$('#pers [data-per].on'); $('[data-sum="pers"]').textContent = pr.length ? (pr.length <= 2 ? pr.map(b => b.textContent).join(', ') : pr.length + ' gewählt') : 'Alle';
     };
-    m.querySelector('.form').addEventListener('click', () => setTimeout(sum)); sum();
+    const filt = () => ({ parts: $$('#parts .on').map(b => b.dataset.p), periods: $$('#pers [data-per].on').map(b => b.dataset.per), types: $$('#types .on').map(b => b.dataset.ty), topics: $$('#topics .on').map(b => b.dataset.tp) });
+    const counts = () => { const f = filt(); $('#cNew').textContent = poolIds('new', f).length; $('#cMarked').textContent = poolIds('marked', f).length; };
+    m.querySelector('.form').addEventListener('click', () => setTimeout(() => { sum(); counts(); })); sum(); counts();
+    $('#allNew').onclick = () => startPool('new', filt());
+    $('#allMarked').onclick = () => startPool('marked', filt());
     const pick = (box, multi) => box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (!multi) $$('button', box).forEach(x => x.classList.remove('on')); b.classList.toggle('on', multi ? !b.classList.contains('on') : true); });
     pick($('#size'), false); pick($('#tl'), false); pick($('#parts'), true); pick($('#types'), true); if ($('#topics')) pick($('#topics'), true);
     $('#pers').addEventListener('click', e => {
@@ -384,6 +416,10 @@
 
   function session(m, [id]) {
     const s = st.sessions[id]; if (!s) { go('#/training'); return; }
+    if (s.pool === 'new') {   // inzwischen woanders bearbeitet → nicht nochmal zeigen
+      let k = 0; while (s.idx < s.items.length && !s.items[s.idx].result && !s.items[s.idx].fresh && st.srs[s.items[s.idx].id] && st.srs[s.items[s.idx].id].seen) { s.items[s.idx].skip = 1; s.idx++; k++; }
+      if (k) { if (s.idx >= s.items.length) s.done = true; S.save(true); }
+    }
     if (s.idx >= s.items.length || (s.endsAt && Date.now() > s.endsAt && !s.done)) return sessionEnd(m, s);
     const it = s.items[s.idx]; const t = TASKS[it.id];
     if (!it.fresh) { freshSheet(t.id); it.fresh = 1; S.save(true); }   // neuer Versuch = leeres Blatt (altes wird archiviert)
@@ -398,7 +434,7 @@
         <span class="muted small">Beleg: IHK-Lösungsschablone ${t.solution.template}, Lösungsheft S. ${t.solution.page}</span>
         <button class="link" id="showKey">Lösungsschablone ansehen</button></div>${it.result !== 'wrong' ? `<button class="chip mark-chip ${isMarked(t.id) ? 'on' : ''}" data-mark="${t.id}" data-long="1"><svg class="ic"><use href="#i-star"/></svg> <span>${isMarked(t.id) ? 'Gemerkt fürs Fehlerheft' : 'Geraten? Merken'}</span></button>` : ''}`;
     }
-    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div>
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button>${sessDots(s)}
       <span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     const tOpts = { tutor: () => phase === 'done' ? 'full' : 'hint', myAnswer: () => it.tries.length ? 'Antwort ' + it.tries.join(', dann ') : '' };
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card">${msg}<p class="q">Wähle die richtige Antwort:</p>${optButtons(null, dis, cls)}
@@ -494,10 +530,10 @@
   }
   function sessionEnd(m, s) {
     s.done = true; S.save(true);
-    const c = { first: 0, hint: 0, wrong: 0, open: 0 }; s.items.forEach(i => c[i.result || 'open']++);
+    const c = { first: 0, hint: 0, wrong: 0, open: 0 }; s.items.forEach(i => { if (!i.skip) c[i.result || 'open']++; });
     m.innerHTML = `<header class="page-h"><h1>Training abgeschlossen</h1></header>
       <section class="kpis">${kpi('Sofort richtig', c.first, '')}${kpi('Mit Hinweis', c.hint, '')}${kpi('Falsch', c.wrong, 'kommen bald wieder')}${c.open ? kpi('Nicht bearbeitet', c.open, 'Zeit abgelaufen') : ''}</section>
-      <section class="card">${s.items.map(i => { const t = TASKS[i.id]; return `<a class="row" href="#/task/${t.id}"><b>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${t.label}</b><span class="res ${i.result || ''}">${{ first: 'sofort richtig', hint: 'mit Hinweis', wrong: 'falsch' }[i.result] || 'offen'}</span></a>`; }).join('')}</section>
+      <section class="card">${s.items.filter(i => !i.skip && (i.result || !s.pool)).map(i => { const t = TASKS[i.id]; return `<a class="row" href="#/task/${t.id}"><b>${esc(t.periodLabel)} · ${PART_SHORT[t.part]} · ${t.label}</b><span class="res ${i.result || ''}">${{ first: 'sofort richtig', hint: 'mit Hinweis', wrong: 'falsch' }[i.result] || 'offen'}</span></a>`; }).join('')}</section>
       <div class="actions wrap"><a class="btn primary" href="#/training">Neues Training</a>${c.wrong || c.hint ? `<a class="btn" href="#/mistakes">${ic('repeat')} Zum Fehlerheft</a>` : ''}<a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
   }
 
@@ -596,7 +632,7 @@
   function openSession(m, s, it, t) {
     it.rec = it.rec || { ans: null, self: {}, phase: it.result ? 'done' : 'ask' };
     const oOpts = { tutor: () => it.rec.phase === 'ask' ? 'hint' : 'full', myAnswer: () => openAnswerText(t, it.rec) };
-    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button><div class="dots">${s.items.map((x, i) => `<i class="${x.result || ''} ${i === s.idx ? 'cur' : ''}"></i>`).join('')}</div><span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
+    const prog = `<div class="sess-top"><button class="back" data-back="#/"><svg class="ic"><use href="#i-left"/></svg>Zurück</button><button class="ib sess-del" data-sdel="${s.id}" title="Training löschen" aria-label="Training löschen"><svg class="ic"><use href="#i-trash"/></svg></button>${sessDots(s)}<span class="muted">${s.idx + 1}/${s.items.length}</span>${s.endsAt ? '<span class="timer" id="timer"></span>' : ''}</div>`;
     m.innerHTML = `<div class="task-page">${prog}${taskFrame(t, `<div class="answer card openc"><div id="openBox"></div><div class="actions">${it.result ? `<button class="btn primary" id="next">${s.idx + 1 < s.items.length ? 'Weiter →' : 'Auswertung'}</button>` : ''}</div></div>`, oOpts)}</div>`;
     wireFrame(t, m, oOpts); hydrate(m);
     openWidget(m, t, it.rec, (rec, gr) => { if (gr) { it.result = recordOpen(t, rec, gr, 'training'); } s.updated = Date.now(); S.save(true); if (gr) route(); });
