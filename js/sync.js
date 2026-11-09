@@ -73,12 +73,13 @@
       }
       for (let i = 0; i < 3; i++) {
         local.updatedAt = Math.max(Date.now(), (srvTs || 0) + 1, local.updatedAt || 0);
-        const res = await api('/rest/v1/rpc/push_state', { method: 'POST', body: { p_state: local, p_client_updated_at: local.updatedAt, p_device: device() } });
+        const res = await api('/rest/v1/rpc/push_state', { method: 'POST', body: { p_state: slim(local), p_client_updated_at: local.updatedAt, p_device: device() } });
         const row = Array.isArray(res) ? res[0] : res;
         if (row && row.accepted === false && row.state) { local = merged(local, row.state); continue; }   // kurz davor hat ein anderes Gerät gespeichert
         set(BASE, Number(row && row.client_updated_at || local.updatedAt)); break;
       }
       if (overwrite) AP2Store.forcePush(false);
+      try { await pushInk(local); if (await pullInk(local, uid) && !changed) AP2Store.replace(local); } catch (e) { console.warn('Ink-Sync', e.message); }
       changed = DIFF;
       if (changed && (AP2Store.get() !== orig || orig.updatedAt !== origTs)) local = AP2Core.mergeStates(AP2Store.get(), local);   // währenddessen weitergearbeitet
       if (changed) { AP2Store.replace(local); window.dispatchEvent(new CustomEvent('ap2-state-replaced')); }
@@ -86,13 +87,48 @@
     } catch (e) { setStatus(e.status ? 'fehler' : 'offline'); console.warn('Sync', e.message); }
     finally { busy = false; }
   }
+  // Lernstand ohne Rechenpapier hochladen (das geht je Aufgabe über user_ink)
+  function slim(s) { const o = Object.assign({}, s); delete o.ink; delete o.anno; delete o.inkArchive; return o; }
+  const INK_OK = 'ap2.claude.inkSynced', INK_PULL = 'ap2.claude.inkPull';
+  async function pushInk(st) {
+    st.inkAt = st.inkAt || {};
+    for (const id of new Set([...Object.keys(st.ink || {}), ...Object.keys(st.anno || {})])) if (!st.inkAt[id]) st.inkAt[id] = 1;   // Altbestand ohne Zeitstempel
+    const done = get(INK_OK) || {};
+    for (const [id, at] of Object.entries(st.inkAt)) {
+      if (at <= (done[id] || 0)) continue;
+      await api('/rest/v1/rpc/push_ink', { method: 'POST', body: { p_task: id, p_data: { ink: (st.ink || {})[id] || null, anno: (st.anno || {})[id] || null }, p_at: at } });
+      done[id] = at; set(INK_OK, done);
+    }
+  }
+  async function pullInk(st, uid) {
+    let cur = get(INK_PULL) || '1970-01-01T00:00:00Z', applied = false;
+    const done = get(INK_OK) || {};
+    for (let page = 0; page < 20; page++) {
+      const rows = await api('/rest/v1/user_ink?select=task_id,data,at,srv_at&user_id=eq.' + uid + '&srv_at=gt.' + encodeURIComponent(cur) + '&order=srv_at.asc&limit=100');
+      if (!rows || !rows.length) break;
+      for (const r of rows) {
+        cur = r.srv_at; st.inkAt = st.inkAt || {};
+        if (Number(r.at) > (st.inkAt[r.task_id] || 0)) {
+          const d = r.data || {}; st.ink = st.ink || {}; st.anno = st.anno || {};
+          if (d.ink) st.ink[r.task_id] = d.ink; else delete st.ink[r.task_id];
+          if (d.anno) st.anno[r.task_id] = d.anno; else delete st.anno[r.task_id];
+          st.inkAt[r.task_id] = Number(r.at); done[r.task_id] = Number(r.at); applied = true;
+        }
+      }
+      set(INK_PULL, cur); if (rows.length < 100) break;
+    }
+    if (applied) set(INK_OK, done);
+    return applied;
+  }
   function merged(local, remote) {
     const before = JSON.stringify(local);
-    const m = AP2Core.mergeStates(local, AP2Core.migrate(remote));
+    const r = AP2Core.migrate(remote), hasInk = r.ink && Object.keys(r.ink).length;
+    const m = AP2Core.mergeStates(local, r);
+    if (!hasInk) { m.ink = local.ink || {}; m.anno = local.anno || {}; m.inkArchive = local.inkArchive || {}; m.inkAt = local.inkAt || {}; }   // Rechenpapier kommt getrennt
     if (JSON.stringify(Object.assign({}, m, { updatedAt: 0 })) !== JSON.stringify(Object.assign(JSON.parse(before), { updatedAt: 0 }))) { if (!DIFF) AP2Store.backup('vor-zusammenfuehrung'); DIFF = true; }
     return m;
   }
-  function schedule() { if (!session) return; clearTimeout(timer); timer = setTimeout(() => syncNow(), 4000); }
+  function schedule() { if (!session) return; clearTimeout(timer); timer = setTimeout(() => { timer = null; syncNow(); }, 20000); }
 
   async function sendReport(r) { if (!session || !(await ensureFresh())) return false; await api('/rest/v1/task_reports', { method: 'POST', body: { user_id: session.user.id, task_id: r.task, task_version: r.version || 1, text: r.text }, headers: { Prefer: 'return=minimal' } }); fetch(URL_ + '/functions/v1/report-notify', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); return true; }
   async function serverBackups() { if (!(await ensureFresh())) return []; return api('/rest/v1/state_backups?select=id,created_at,device,client_updated_at&order=created_at.desc&limit=30'); }
@@ -210,7 +246,7 @@
     setStatus(session ? 'bereit' : 'abgemeldet');
     window.addEventListener('online', () => syncNow());
     window.addEventListener('offline', () => setStatus('offline'));
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' || timer) { clearTimeout(timer); timer = null; syncNow(); } });
     if (session && session.user) { loadProfile().catch(() => {}); syncNow(); }
     setInterval(() => syncNow(), 120000);
   }
