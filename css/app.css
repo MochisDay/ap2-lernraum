@@ -595,3 +595,11 @@ h1{hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
 .pr-sol li{margin:12px 0} .pr-sol li .m{font-size:1.05em}
 .pr-in b .m{font-size:1.05em;font-weight:600}
 @media (max-width:600px){.m-n,.m-d{white-space:normal}}
+/* Rechenpapier bekommt immer eine brauchbare Mindesthöhe; Antwortbereich scrollt stattdessen */
+@media (min-width:1001px){ .work:not(.big) .side>.answer{flex:0 1 auto;min-height:120px;overflow:auto} .work:not(.big) .pad{flex:1 0 340px} }
+.pad-hint{max-width:70%}
+/* Werkzeugleiste des Rechenpapiers einzeilig (seitlich wischbar) statt fünf Zeilen hoch */
+.pad-bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.pad-bar::-webkit-scrollbar{display:none}
+.pad-bar>*{flex:0 0 auto}
+@media (min-width:1001px){ .work:not(.big) .pad{flex:1 0 400px} }

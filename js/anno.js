@@ -12,7 +12,7 @@
     scroller.style.position = 'relative';
     const cv = document.createElement('canvas'); cv.className = 'anno-cv';
     scroller.appendChild(cv);
-    const ctx = cv.getContext('2d', { desynchronized: true });
+    const ctx = cv.getContext('2d');   // kein „desynchronized“: zeichnet auf manchen Android-Tablets schwarz
     let W = 1, H = 1, dpr = 1;
 
     function sync() {
@@ -33,10 +33,13 @@
       if (p.length > 1) { const l = p[p.length - 1]; c.lineTo(l[0] * W, l[1] * W); }
       c.stroke();
     }
+    // Leere Ebene ausblenden, damit sie das Aufgabenbild nie verdecken kann
+    const vis = () => { cv.style.visibility = on || cur || strokes.length ? 'visible' : 'hidden'; };
     function draw() {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       strokes.forEach(s => path(ctx, s)); if (cur && cur.p.length) path(ctx, cur);
+      vis();
     }
     const pt = e => { const r = cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) / r.width * 1e4) / 1e4, Math.round((e.clientY - r.top) / r.width * 1e4) / 1e4]; };
     const canDraw = e => on && (e.pointerType === 'pen' || e.pointerType === 'mouse' || (finger && e.pointerType === 'touch'));
@@ -78,7 +81,7 @@
     const ro = 'ResizeObserver' in window ? new ResizeObserver(() => sync()) : null; if (ro) ro.observe(img);
     img.addEventListener('load', sync);
     sync();
-    function setMode(v) { on = v; cv.classList.toggle('on', on); cv.style.touchAction = on && finger ? 'none' : 'pan-x pan-y'; }
+    function setMode(v) { on = v; cv.classList.toggle('on', on); vis(); cv.style.touchAction = on && finger ? 'none' : 'pan-x pan-y'; }
     return {
       sync, setMode, isOn: () => on, count: () => strokes.length,
       setColor(c) { color = c; tool = 'pen'; }, setTool(t) { tool = t; },

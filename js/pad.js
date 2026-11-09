@@ -57,7 +57,7 @@
     const wrap = host.querySelector('.pad-wrap');
     const cv = host.querySelector('canvas.base'), lv = host.querySelector('canvas.live');
     const tv = host.querySelector('canvas.tip'); tv.style.pointerEvents = 'none';
-    const ctx = cv.getContext('2d'), lctx = lv.getContext('2d', { desynchronized: true }), tctx = tv.getContext('2d', { desynchronized: true });
+    const ctx = cv.getContext('2d'), lctx = lv.getContext('2d'), tctx = tv.getContext('2d');   // ohne „desynchronized“ (Android-Fehler: schwarze Fläche)
     const bar = host.querySelector('.pad-bar');
 
     const pageTop = i => i * (PH + GAP);
