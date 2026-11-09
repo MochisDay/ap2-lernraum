@@ -73,7 +73,7 @@
   }
   function schedule() { if (!session) return; clearTimeout(timer); timer = setTimeout(() => syncNow(), 4000); }
 
-  async function sendReport(r) { if (!session || !(await ensureFresh())) return false; await api('/rest/v1/task_reports', { method: 'POST', body: { user_id: session.user.id, task_id: r.task, task_version: r.version || 1, text: r.text }, headers: { Prefer: 'return=minimal' } }); return true; }
+  async function sendReport(r) { if (!session || !(await ensureFresh())) return false; await api('/rest/v1/task_reports', { method: 'POST', body: { user_id: session.user.id, task_id: r.task, task_version: r.version || 1, text: r.text }, headers: { Prefer: 'return=minimal' } }); fetch(URL_ + '/functions/v1/report-notify', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); return true; }
   async function serverBackups() { if (!(await ensureFresh())) return []; return api('/rest/v1/state_backups?select=id,created_at,device,client_updated_at&order=created_at.desc&limit=30'); }
   async function restoreServerBackup(id) { const r = await api('/rest/v1/state_backups?select=state&id=eq.' + id); if (!r[0]) throw new Error('Sicherung nicht gefunden'); AP2Store.backup('vor-wiederherstellung'); const s = r[0].state; s.updatedAt = Date.now(); AP2Store.replace(s); await syncNow(true); }
   // Duelle (privat 1:1). Bewertet wird auf dem Server gegen die offiziellen Schablonen (Tabelle mc_keys).

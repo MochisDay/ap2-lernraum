@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 36;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 37;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -158,9 +158,9 @@
     const [name, ...rest] = h.split('/');
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (name || 'home')));
     document.body.classList.toggle('focus', ['exam', 'review', 'session', 'duel', 'bexam', 'bcorr'].includes(name));
-    $$('#nav a').forEach(a => { if (name === 'set' && a.dataset.r === 'exams') a.classList.add('on'); });
+    $$('#nav a').forEach(a => { if ((name === 'set' && a.dataset.r === 'exams') || (name === 'learn' && a.dataset.r === 'training')) a.classList.add('on'); });
     const m = $('#main');
-    const views = { '': home, home, mistakes, set: setView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
+    const views = { '': home, home, learn: learnView, mistakes, set: setView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
     (views[name] || home)(m, rest.map(decodeURIComponent));
     hydrate(m);
     m.scrollTop = 0; m.focus({ preventScroll: true });
@@ -282,7 +282,7 @@
   /* ---------- Schnelltraining ---------- */
   function training(m) {
     const ps = periods();
-    m.innerHTML = `<header class="page-h"><h1>Schnelltraining</h1><p>Mix aus Schwächen (40 %), neuen Aufgaben (40 %) und fälligen Wiederholungen (20 %). Nur fachlich belegte Aufgaben.</p></header>
+    m.innerHTML = `<a class="banner learn-banner" href="#/learn">${ic('book')}<span><b>Themen-Einstieg:</b> Leitfaden und Übungsrechnungen mit Lösungsweg – zum Reinkommen, bevor es an die IHK-Aufgaben geht.</span></a><header class="page-h"><h1>Schnelltraining</h1><p>Mix aus Schwächen (40 %), neuen Aufgaben (40 %) und fälligen Wiederholungen (20 %). Nur fachlich belegte Aufgaben.</p></header>
       <section class="card form">
         <label>Anzahl</label><div class="seg big" id="size">${[5, 10, 20].map(n => `<button data-n="${n}" class="${n === (st.settings.sessionSize || 10) ? 'on' : ''}">${n}</button>`).join('')}</div>
         <label>Aufgabenart</label><div class="chips" id="types"><button class="chip on" data-ty="mc">Multiple Choice (Teil A, WiSo)</button><button class="chip" data-ty="open">Offene Aufgaben (Teil B, WiSo U)</button></div>
@@ -421,6 +421,49 @@
     const nx = $('#next'); if (nx) nx.onclick = () => { s.idx++; if (s.idx >= s.items.length) s.done = true; s.updated = Date.now(); S.save(true); route(); };
     
     const sk = $('#showKey'); if (sk) sk.onclick = () => openPage(`${t.period}_LOES`, t.solution.page, `Lösung ${t.periodLabel} (${t.solution.template})`);
+  }
+  /* ---------- Themen-Einstieg: Leitfaden + Übungsrechnungen (keine IHK-Aufgaben) ---------- */
+  const LV = ['', 'leicht', 'mittel', 'prüfungsnah'];
+  let LEARN = null;   // aktuelle Übungsrechnung { key, gi, x, ans, checked }
+  function learnView(m, [key]) {
+    const L = window.AP2Learn; st.learn = st.learn || {};
+    if (!key) {
+      m.innerHTML = `<header class="page-h"><a class="link" href="#/training">← Training</a><h1>Themen-Einstieg</h1><p>Zu jedem Thema: die wichtigsten Formeln, das Vorgehen wie in der IHK-Lösung und typische Fehler. Dann Übungsrechnungen mit immer neuen Zahlen – die App rechnet die Lösung selbst aus und zeigt den Rechenweg. Danach geht es direkt an die IHK-Aufgaben zum Thema.</p></header>
+        <div class="learn-grid">${L.TOPICS.map(T => { const p = st.learn[T.key] || { n: 0, ok: 0 }; return `<a class="start learn-t" href="#/learn/${T.key}">${ic(T.icon)}<div><b>${esc(T.title)}</b><span>${esc(T.intro)}</span><small class="muted">${p.n ? `${p.n} gerechnet · ${Math.round(100 * p.ok / p.n)} % richtig` : 'noch nicht geübt'}</small></div></a>`; }).join('')}</div>
+        <p class="muted small">Die Übungsrechnungen sind keine IHK-Aufgaben. Ihre Formeln sind gegen Ergebnisse aus den offiziellen Lösungsvorschlägen geprüft.</p>`;
+      return;
+    }
+    const T = L.TOPICS.find(x => x.key === key); if (!T) { go('#/learn'); return; }
+    if (!LEARN || LEARN.key !== key) LEARN = { key, gi: 0, x: T.gens[0].make(), ans: {}, checked: false };
+    const g = T.gens[LEARN.gi], x = LEARN.x;
+    const nIHK = gradable().filter(t => t.topic === T.topic).length;
+    const res = LEARN.checked ? x.asks.map((a, i) => { const r = C.checkNumber(LEARN.ans[i] || '', { value: a.value, unit: a.unit, tol: a.tol, absTol: a.tol === 0 ? 0.5 * Math.pow(10, -(a.dec || 0)) : undefined }); return r; }) : null;
+    m.innerHTML = `<header class="page-h"><a class="link" href="#/learn">← Themen-Einstieg</a><h1>${esc(T.title)}</h1><p>${esc(T.intro)}</p></header>
+      <div class="grid2 learn-cols">
+        <section class="card guide"><h2>Formeln</h2>
+          <div class="fgrid">${T.formulas.map(f => `<div class="frow"><span class="fk">${esc(f[0])}</span><span class="fv">${esc(f[1])}${f[2] ? `<br><span class="muted">${esc(f[2])}</span>` : ''}</span></div>`).join('')}</div>
+          <h2>Vorgehen wie in der IHK-Lösung</h2><ol class="gsteps">${T.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+          <p class="muted small">In der Prüfung zählt der vollständige Rechengang: Formel, Werte mit Einheiten einsetzen, Ergebnis mit Einheit.</p>
+          <h2>Typische Fehler</h2><ul class="traps">${T.traps.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>
+        <section class="card practice"><div class="pr-h"><h2>Übungsrechnung</h2><span class="pill">Übung · keine IHK-Aufgabe</span></div>
+          <div class="chips">${T.gens.map((G, i) => `<button class="chip ${i === LEARN.gi ? 'on' : ''}" data-gi="${i}">${esc(G.name)} <small>${LV[G.level]}</small></button>`).join('')}</div>
+          <p class="pr-q">${esc(x.q)}</p>
+          <div class="pr-asks">${x.asks.map((a, i) => `<label class="pr-a ${res ? (res[i].ok ? 'ok' : 'no') : ''}"><span>${esc(a.label)}</span><span class="pr-in"><b>${esc(a.sym)} =</b><input class="inp num" data-ai="${i}" inputmode="decimal" autocomplete="off" placeholder="${a.unit ? 'Wert ' + esc(a.unit) : 'Wert'}" value="${esc(LEARN.ans[i] || '')}" ${res ? 'readonly' : ''}></span>${res ? `<small class="${res[i].ok ? 'good' : 'bad'}">${res[i].ok ? '✓ richtig' : `✗ richtig wäre ${L.fmt(a.value, a.dec)}${a.unit ? ' ' + esc(a.unit) : ''}${!(LEARN.ans[i] || '').trim() ? ' – keine Angabe' : res[i].reason === 'unit' ? ' – Einheit fehlt oder passt nicht' : res[i].reason === 'format' ? ' – Zahl nicht lesbar' : ''}`}</small>` : ''}</label>`).join('')}</div>
+          ${res ? `<div class="pr-sol"><b>Lösungsweg</b><ol>${x.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
+          <div class="actions wrap">${res ? `<button class="btn primary" id="prNew">${ic('repeat')} Neue Aufgabe</button>` : `<button class="btn primary" id="prChk">Prüfen</button><button class="btn ghost" id="prSol">Lösungsweg zeigen</button>`}</div></section>
+      </div>
+      <section class="card learn-next"><div><h2>Bereit für die Prüfung?</h2><p class="muted">${nIHK} Original-IHK-Aufgaben zum Thema „${esc((REG.topics || {})[T.topic] || T.title)}“.</p></div><button class="btn primary lg" id="toIHK">${ic('bolt')} IHK-Aufgaben üben</button></section>`;
+    $$('[data-gi]', m).forEach(b => b.onclick = () => { LEARN = { key, gi: +b.dataset.gi, x: T.gens[+b.dataset.gi].make(), ans: {}, checked: false }; route(); });
+    $$('[data-ai]', m).forEach(inp => inp.oninput = () => { LEARN.ans[+inp.dataset.ai] = inp.value; });
+    const chk = $('#prChk', m); if (chk) chk.onclick = () => {
+      if (!x.asks.some((a, i) => (LEARN.ans[i] || '').trim())) return AP2Toast('Erst rechnen und Ergebnisse eintragen – oder „Lösungsweg zeigen“.');
+      LEARN.checked = true; const p = st.learn[key] = st.learn[key] || { n: 0, ok: 0 };
+      const all = x.asks.every((a, i) => C.checkNumber(LEARN.ans[i] || '', { value: a.value, unit: a.unit, tol: a.tol, absTol: a.tol === 0 ? 0.5 * Math.pow(10, -(a.dec || 0)) : undefined }).ok);
+      p.n++; if (all) p.ok++; S.save(); route();
+    };
+    const sol = $('#prSol', m); if (sol) sol.onclick = () => { LEARN.checked = true; const p = st.learn[key] = st.learn[key] || { n: 0, ok: 0 }; p.n++; S.save(); route(); };
+    const nw = $('#prNew', m); if (nw) nw.onclick = () => { LEARN = { key, gi: LEARN.gi, x: g.make(), ans: {}, checked: false }; route(); };
+    $('#toIHK', m).onclick = () => topicTraining(T.topic);
   }
   /* ---------- Fehlerheft: falsch oder nur mit Hinweis gelöste Aufgaben, bis sie zweimal in Folge sofort sitzen ---------- */
   function mistakeLists() {
