@@ -52,30 +52,51 @@
   async function signOut() { try { await api('/auth/v1/logout', { method: 'POST' }); } catch {} session = null; profile = null; set(SK, null); setCookie(); try { caches.delete('ap2-data'); } catch {} setStatus('abgemeldet'); }
   async function loadProfile() { if (!(await ensureFresh())) return null; const r = await api('/rest/v1/profiles?select=id,email,display_name,role&id=eq.' + session.user.id); profile = r && r[0] || null; return profile; }
 
-  /* Abgleich: Server neuer -> übernehmen (lokal vorher sichern); lokal neuer -> hochladen. */
+  /* Abgleich: Hat sich der Cloud-Stand seit dem letzten Abgleich geändert (anderes Gerät), wird er geholt und mit dem lokalen
+     ZUSAMMENGEFÜHRT (AP2Core.mergeStates) – kein Gerät kann mehr Fortschritt eines anderen überschreiben. Danach hochladen. */
+  const BASE = 'ap2.claude.syncBase'; let DIFF = false;
   async function syncNow(force) {
     if (busy || !session) return;
     if (!navigator.onLine) return setStatus('offline');
     busy = true; setStatus('synchronisiere');
     try {
       if (!(await ensureFresh())) return;
-      const local = AP2Store.get();
-      const res = await api('/rest/v1/rpc/push_state', { method: 'POST', body: { p_state: local, p_client_updated_at: local.updatedAt || 0, p_device: device() } });
-      const row = Array.isArray(res) ? res[0] : res;
-      if (row && row.accepted === false && row.state) {
-        AP2Store.backup('vor-cloud-uebernahme');
-        AP2Store.replace(row.state);
-        window.dispatchEvent(new CustomEvent('ap2-state-replaced'));
+      const uid = session.user.id, q = '/rest/v1/user_state?user_id=eq.' + uid + '&select=';
+      const orig = AP2Store.get(), origTs = orig.updatedAt; let local = orig; DIFF = false;
+      const head = await api(q + 'client_updated_at');
+      const srvTs = head && head[0] ? Number(head[0].client_updated_at) : null;
+      const overwrite = AP2Store.forcePush();
+      let changed = false;
+      if (srvTs != null && srvTs !== get(BASE) && !overwrite) {
+        const full = await api(q + 'state,client_updated_at');
+        if (full && full[0] && full[0].state) local = merged(local, full[0].state);
       }
+      for (let i = 0; i < 3; i++) {
+        local.updatedAt = Math.max(Date.now(), (srvTs || 0) + 1, local.updatedAt || 0);
+        const res = await api('/rest/v1/rpc/push_state', { method: 'POST', body: { p_state: local, p_client_updated_at: local.updatedAt, p_device: device() } });
+        const row = Array.isArray(res) ? res[0] : res;
+        if (row && row.accepted === false && row.state) { local = merged(local, row.state); continue; }   // kurz davor hat ein anderes Gerät gespeichert
+        set(BASE, Number(row && row.client_updated_at || local.updatedAt)); break;
+      }
+      if (overwrite) AP2Store.forcePush(false);
+      changed = DIFF;
+      if (changed && (AP2Store.get() !== orig || orig.updatedAt !== origTs)) local = AP2Core.mergeStates(AP2Store.get(), local);   // währenddessen weitergearbeitet
+      if (changed) { AP2Store.replace(local); window.dispatchEvent(new CustomEvent('ap2-state-replaced')); }
       set('ap2.claude.lastSync', Date.now()); setStatus('synchron');
     } catch (e) { setStatus(e.status ? 'fehler' : 'offline'); console.warn('Sync', e.message); }
     finally { busy = false; }
+  }
+  function merged(local, remote) {
+    const before = JSON.stringify(local);
+    const m = AP2Core.mergeStates(local, AP2Core.migrate(remote));
+    if (JSON.stringify(Object.assign({}, m, { updatedAt: 0 })) !== JSON.stringify(Object.assign(JSON.parse(before), { updatedAt: 0 }))) { if (!DIFF) AP2Store.backup('vor-zusammenfuehrung'); DIFF = true; }
+    return m;
   }
   function schedule() { if (!session) return; clearTimeout(timer); timer = setTimeout(() => syncNow(), 4000); }
 
   async function sendReport(r) { if (!session || !(await ensureFresh())) return false; await api('/rest/v1/task_reports', { method: 'POST', body: { user_id: session.user.id, task_id: r.task, task_version: r.version || 1, text: r.text }, headers: { Prefer: 'return=minimal' } }); fetch(URL_ + '/functions/v1/report-notify', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); return true; }
   async function serverBackups() { if (!(await ensureFresh())) return []; return api('/rest/v1/state_backups?select=id,created_at,device,client_updated_at&order=created_at.desc&limit=30'); }
-  async function restoreServerBackup(id) { const r = await api('/rest/v1/state_backups?select=state&id=eq.' + id); if (!r[0]) throw new Error('Sicherung nicht gefunden'); AP2Store.backup('vor-wiederherstellung'); const s = r[0].state; s.updatedAt = Date.now(); AP2Store.replace(s); await syncNow(true); }
+  async function restoreServerBackup(id) { const r = await api('/rest/v1/state_backups?select=state&id=eq.' + id); if (!r[0]) throw new Error('Sicherung nicht gefunden'); AP2Store.backup('vor-wiederherstellung'); const s = r[0].state; s.updatedAt = Date.now(); AP2Store.replace(s); AP2Store.forcePush(true); await syncNow(true); }
   // Duelle (privat 1:1). Bewertet wird auf dem Server gegen die offiziellen Schablonen (Tabelle mc_keys).
   const rpc = async (fn, body) => { if (!session || !(await ensureFresh())) throw new Error('Für Duelle bitte anmelden.'); return api('/rest/v1/rpc/' + fn, { method: 'POST', body: body || {} }); };
   const duels = {

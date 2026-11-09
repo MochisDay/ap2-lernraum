@@ -215,5 +215,64 @@
     }
     return out;
   }
-  return { areaResult, finalResult, ihkGrade, parseQuantity, checkNumber, unitInfo, gradeSubtask, DAY, INTERVALS, gradableTasks, gradeMC, outcome, updateSrs, hintEliminate, pickSession, scoreExam, migrate, stats, shuffle, SCHEMA };
+
+  /* ---------- Zwei Lernstände zusammenführen (Cloud-Sync) ----------
+     Statt „neuester gewinnt“ wird vereinigt, damit ein Gerät mit altem Stand nie Fortschritt löschen kann:
+     Versuche vereinigt, Wiederholungsstand je Aufgabe der zuletzt geübte, Markierungen/Löschungen über Zeitstempel (gone),
+     Rechenpapier je Aufgabe das zuletzt geänderte (inkAt), „Lernstand auf 0“ über resetAt. */
+  function mergeStates(a, b) {
+    if (!a || !a.srs) return b; if (!b || !b.srs) return a;
+    const [hi, lo] = (a.updatedAt || 0) >= (b.updatedAt || 0) ? [a, b] : [b, a];
+    const out = Object.assign({}, hi);
+    const reset = Math.max(a.resetAt || 0, b.resetAt || 0); out.resetAt = reset || undefined;
+    const gone = Object.assign({}, lo.gone || {}); for (const [k, v] of Object.entries(hi.gone || {})) gone[k] = Math.max(gone[k] || 0, v);
+    out.gone = gone;
+    const live = (k, id, ts, keepOnReset) => !(gone[k + ':' + id] >= (ts || 0)) && (keepOnReset || (ts || 0) >= reset);
+    // Versuche
+    const seen = new Set(), att = [];
+    for (const x of (hi.attempts || []).concat(lo.attempts || [])) { const key = x.task + '|' + x.at + '|' + x.mode; if (seen.has(key) || (x.at || 0) < reset) continue; seen.add(key); att.push(x); }
+    out.attempts = att.sort((x, y) => (x.at || 0) - (y.at || 0));
+    // Wiederholungsstand
+    out.srs = {};
+    for (const src of [lo.srs || {}, hi.srs || {}]) for (const [id, e] of Object.entries(src)) {
+      if (!e || (e.last || 0) < reset) continue; const c = out.srs[id];
+      if (!c || (e.last || 0) > (c.last || 0) || ((e.last || 0) === (c.last || 0) && (e.seen || 0) >= (c.seen || 0))) out.srs[id] = e;
+    }
+    // Markierungen (Wert = Zeitpunkt des Merkens; Entfernen steht in gone)
+    out.marked = {};
+    for (const src of [lo.marked || {}, hi.marked || {}]) for (const [id, ts] of Object.entries(src)) if (live('marked', id, ts, true) && (!out.marked[id] || ts > out.marked[id])) out.marked[id] = ts;
+    // Trainings, Prüfungen, komplette Sätze
+    const tsOf = o => Math.max(o.updated || 0, o.submitted || 0, o.started || 0, o.created || 0, (o.result && o.result.at) || 0, o.done > 1 ? o.done : 0);
+    const born = o => o.created || o.started || tsOf(o);
+    for (const k of ['sessions', 'exams', 'bexams', 'sets']) {
+      const m = {};
+      for (const src of [lo[k] || {}, hi[k] || {}]) for (const [id, o] of Object.entries(src)) {
+        if (!o || !live(k, id, born(o))) continue; const c = m[id];
+        if (!c || tsOf(o) >= tsOf(c)) m[id] = o;
+      }
+      out[k] = m;
+    }
+    // Rechenpapier / Eintragungen je Aufgabe: das zuletzt geänderte
+    const inkAt = Object.assign({}, lo.inkAt || {}); for (const [k, v] of Object.entries(hi.inkAt || {})) inkAt[k] = Math.max(inkAt[k] || 0, v);
+    out.inkAt = inkAt; out.ink = {}; out.anno = {};
+    const ids = new Set([...Object.keys(hi.ink || {}), ...Object.keys(lo.ink || {}), ...Object.keys(hi.anno || {}), ...Object.keys(lo.anno || {})]);
+    for (const id of ids) {
+      const tH = (hi.inkAt || {})[id] || 0, tL = (lo.inkAt || {})[id] || 0;
+      const src = tL > tH ? lo : hi; const t = Math.max(tH, tL);
+      if (t && t < reset) continue;
+      if (src.ink && src.ink[id]) out.ink[id] = src.ink[id];
+      if (src.anno && src.anno[id]) out.anno[id] = src.anno[id];
+    }
+    out.inkArchive = Object.assign({}, lo.inkArchive || {}, hi.inkArchive || {});
+    for (const [id, x] of Object.entries(lo.inkArchive || {})) if (x && hi.inkArchive && hi.inkArchive[id] && (x.at || 0) > (hi.inkArchive[id].at || 0)) out.inkArchive[id] = x;
+    // Kleinkram
+    out.reports = []; const rs = new Set(); for (const r of (hi.reports || []).concat(lo.reports || [])) { const key = r.task + '|' + r.at; if (!rs.has(key)) { rs.add(key); out.reports.push(r); } }
+    out.duelSeen = Object.assign({}, lo.duelSeen || {}, hi.duelSeen || {});
+    out.open = Object.assign({}, lo.open || {}, hi.open || {});
+    if (hi.learn || lo.learn) { out.learn = Object.assign({}, lo.learn || {}); for (const [k, v] of Object.entries(hi.learn || {})) { const o = out.learn[k]; out.learn[k] = !o || (v.n || 0) >= (o.n || 0) ? v : o; } }
+    out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+    return out;
+  }
+
+  return { mergeStates, areaResult, finalResult, ihkGrade, parseQuantity, checkNumber, unitInfo, gradeSubtask, DAY, INTERVALS, gradableTasks, gradeMC, outcome, updateSrs, hintEliminate, pickSession, scoreExam, migrate, stats, shuffle, SCHEMA };
 });

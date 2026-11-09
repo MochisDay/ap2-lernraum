@@ -36,14 +36,14 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 41;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 42;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
     const ink = (st.ink[id] || []).some(pg => pg && pg.length), an = st.anno && st.anno[id] && st.anno[id].length;
     if (!ink && !an) return;
     st.inkArchive = st.inkArchive || {}; st.inkArchive[id] = { ink: ink ? st.ink[id] : null, anno: an ? st.anno[id] : null, at: Date.now() };
-    st.ink[id] = [[]]; if (st.anno) delete st.anno[id];
+    st.ink[id] = [[]]; if (st.anno) delete st.anno[id]; touchInk(id);
   }
   const hasAnno = id => !!(st.anno && st.anno[id] && st.anno[id].length);
   const hasWork = id => hasAnno(id) || (st.ink[id] || []).some(pg => pg && pg.length);
@@ -52,10 +52,13 @@
     const ink = AP2Pad.exportInk(st.ink[t.id]); if (!hasAnno(t.id)) return ink;
     try { const im = $('#origImg'); const src = im && im.src && !im.dataset.src ? im.src : await imgURL(t.image); return await AP2Anno.exportWith(src, st.anno[t.id], ink); } catch (_) { return ink; }
   }
+  // Gelöschtes merken, damit es beim Abgleich mit einem anderen Gerät nicht zurückkommt
+  const gone = (k, id) => { st.gone = st.gone || {}; st.gone[k + ':' + id] = Date.now(); };
+  const touchInk = id => { st.inkAt = st.inkAt || {}; st.inkAt[id] = Date.now(); };
   const isMarked = id => !!(st.marked && st.marked[id]);
   function toggleMark(id) {
     st.marked = st.marked || {};
-    if (st.marked[id]) delete st.marked[id]; else st.marked[id] = Date.now();
+    if (st.marked[id]) { delete st.marked[id]; gone('marked', id); } else st.marked[id] = Date.now();
     S.save(true);
     const on = isMarked(id);
     $$(`[data-mark="${id}"]`).forEach(b => { b.classList.toggle('on', on); const sp = $('span', b); if (sp) sp.textContent = b.dataset.long ? (on ? 'Gemerkt fürs Fehlerheft' : 'Geraten? Merken') : (on ? 'Gemerkt' : 'Merken'); });
@@ -69,7 +72,7 @@
   document.addEventListener('click', async e => {
     const d = e.target.closest('[data-sdel]'); if (!d) return;
     if (!(await ask({ title: 'Dieses Training löschen?', text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
-    delete st.sessions[d.dataset.sdel]; S.save(true); AP2Toast('Training gelöscht.'); go('#/');
+    delete st.sessions[d.dataset.sdel]; gone('sessions', d.dataset.sdel); S.save(true); AP2Toast('Training gelöscht.'); go('#/');
   });
   document.addEventListener('click', e => { const b = e.target.closest('[data-back]'); if (b) { e.preventDefault(); go(b.dataset.back); } });
 
@@ -104,7 +107,7 @@
   // iPad-Safari ignoriert user-scalable=no – Seiten-Zoom per Geste daher hier unterbinden
   ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
   async function boot() {
-    st = S.load(); S.autoBackup();
+    st = await S.init(); S.autoBackup();
     if (LOGIN_REQUIRED) {
       if (window.AP2Sync) AP2Sync.init();
       const ok = window.AP2Sync && await AP2Sync.ready();
@@ -120,7 +123,7 @@
     document.addEventListener('keydown', keys);
     if (window.AP2Sync) {
       AP2Sync.onStatus(s => { renderFoot(); if (LOGIN_REQUIRED && s === 'abgemeldet') location.replace(location.pathname); });
-      window.addEventListener('ap2-state-replaced', () => { st = S.get(); AP2Toast('Neuerer Lernstand aus der Cloud übernommen.'); route(); });
+      window.addEventListener('ap2-state-replaced', () => { st = S.get(); AP2Toast('Lernstand mit deinem anderen Gerät abgeglichen.'); route(); });
       if (!LOGIN_REQUIRED) AP2Sync.init();
     }
     renderFoot(); route();
@@ -208,9 +211,9 @@
       const [k, id] = b.dataset.del.split(':');
       const what = { s: 'dieses Training', e: 'diese Prüfung', b: 'diese Prüfung', p: 'diese komplette Prüfung' }[k];
       if (!(await ask({ title: `${what[0].toUpperCase() + what.slice(1)} löschen?`, text: 'Es verschwindet aus „Weitermachen“. Was du schon beantwortet hast, bleibt in deinem Lernstand.', buttons: [['Löschen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return;
-      if (k === 's') delete st.sessions[id]; else if (k === 'e') delete st.exams[id];
-      else if (k === 'p') { const x = (st.sets || {})[id]; if (x) x.areas.forEach(a => { if (a.a) delete st.exams[a.a]; if (a.b && st.bexams) delete st.bexams[a.b]; }); delete st.sets[id]; }
-      else if (st.bexams) delete st.bexams[id];
+      if (k === 's') { delete st.sessions[id]; gone('sessions', id); } else if (k === 'e') { delete st.exams[id]; gone('exams', id); }
+      else if (k === 'p') { const x = (st.sets || {})[id]; if (x) x.areas.forEach(a => { if (a.a) { delete st.exams[a.a]; gone('exams', a.a); } if (a.b && st.bexams) { delete st.bexams[a.b]; gone('bexams', a.b); } }); delete st.sets[id]; gone('sets', id); }
+      else if (st.bexams) { delete st.bexams[id]; gone('bexams', id); }
       S.save(true); AP2Toast('Gelöscht.');
       // Nur die Zeile entfernen statt neu zu zeichnen – so bleibt die Seite an der Stelle stehen
       const row = b.closest('.resume'), card = row.parentElement; row.style.transition = 'opacity .2s'; row.style.opacity = '0';
@@ -381,7 +384,7 @@
     };
     $('#pinBook').onclick = () => openBook(t.source.docId, t.source.page);
     const rep = $('#report'); if (rep) rep.onclick = () => report(t);
-    anno = AP2Anno.attach($('.orig-scroll', m), img, { strokes: (st.anno || {})[t.id], onChange: s => { st.anno = st.anno || {}; if (s.length) st.anno[t.id] = s; else delete st.anno[t.id]; S.save(); $('#annoBtn', m).classList.toggle('has', s.length > 0); } });
+    anno = AP2Anno.attach($('.orig-scroll', m), img, { strokes: (st.anno || {})[t.id], onChange: s => { st.anno = st.anno || {}; if (s.length) st.anno[t.id] = s; else delete st.anno[t.id]; touchInk(t.id); S.save(); $('#annoBtn', m).classList.toggle('has', s.length > 0); } });
     { const ab = $('#annoBar', m), bt = $('#annoBtn', m);
       const setOn = v => { anno.setMode(v); ab.hidden = !v; bt.classList.toggle('on', v); };
       bt.onclick = () => setOn(!anno.isOn());
@@ -396,7 +399,7 @@
         else if (a === 'done') setOn(false);
       });
     }
-    pad = AP2Pad.createPad($('#pad'), { pages: st.ink[t.id], grid: st.settings.grid, allowMouse: st.settings.mouseInk, onChange: p => { st.ink[t.id] = p; S.save(); } });
+    pad = AP2Pad.createPad($('#pad'), { pages: st.ink[t.id], grid: st.settings.grid, allowMouse: st.settings.mouseInk, onChange: p => { st.ink[t.id] = p; touchInk(t.id); S.save(); } });
     // Großes Rechenpapier: links Aufgabe, rechts Schreibfläche – beide getrennt zoombar; Antwortfelder hinter einem Knopf
     { const bar = $('#pad .pad-bar', m), side = $('.side', m);
       bar.insertAdjacentHTML('afterbegin', '<div class="seg"><button data-big class="big-btn" title="Rechenpapier groß – Aufgabe links, Schreibfläche rechts"><svg class="ic"><use href="#i-expand"/></svg> <span>Groß</span></button></div>');
@@ -1349,7 +1352,7 @@
       if (v === false || v == null) return;
       if (String(v).trim().toLowerCase() !== 'null' && String(v).trim() !== '0') return AP2Toast('Nicht zurückgesetzt – bitte „null“ eintippen.');
       S.backup('vor-zuruecksetzen');
-      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, sets: {}, open: {}, ink: {}, anno: {}, duelPlay: {} });
+      Object.assign(st, { srs: {}, attempts: [], sessions: {}, exams: {}, bexams: {}, sets: {}, open: {}, ink: {}, anno: {}, duelPlay: {}, inkAt: {}, resetAt: Date.now() });
       for (const k in TUTOR) delete TUTOR[k];
       S.save(true); AP2Toast('Lernstand ist auf 0. Die Sicherung davor findest du unter „Sicherung“.'); go('#/');
     };
