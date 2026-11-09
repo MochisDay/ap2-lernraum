@@ -579,3 +579,19 @@ body.bigpad .sidebar{display:none} body.bigpad #app{grid-template-columns:1fr} b
 .learn-next{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap} .learn-next h2{margin:0 0 4px} .learn-next p{margin:0}
 @media (max-width:600px){.frow{grid-template-columns:1fr;gap:2px}}
 h1{hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
+
+/* Formeln wie im Tabellenbuch: Bruchstrich, kursive Formelzeichen, Indizes, Wurzelstrich */
+.m{font-family:"Cambria Math","STIX Two Math","Times New Roman",Georgia,serif;font-size:1.12em;line-height:2.1;display:inline;font-variant-numeric:normal;white-space:normal}
+.m i{font-style:italic}
+.m sub{font-size:.68em;vertical-align:sub;line-height:0;font-style:normal}
+.m sup{font-size:.68em;vertical-align:super;line-height:0}
+.m-fr{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 .22em;line-height:1.35}
+.m-n{padding:0 .25em .12em;border-bottom:1.3px solid currentColor;white-space:nowrap}
+.m-d{padding:.12em .25em 0;white-space:nowrap}
+.m-rt span{border-top:1.3px solid currentColor;padding:0 .08em;margin-left:-.02em}
+.fv{display:flex;flex-direction:column;gap:8px}
+.fm{display:block;font-size:16px}
+.fnote{font-size:13px;color:var(--muted)}
+.pr-sol li{margin:12px 0} .pr-sol li .m{font-size:1.05em}
+.pr-in b .m{font-size:1.05em;font-weight:600}
+@media (max-width:600px){.m-n,.m-d{white-space:normal}}
