@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 43;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 44;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -83,7 +83,12 @@
   const periodLabel = p => (DOCS.find(d => d.period === p) || {}).periodLabel || p;
   const doc = id => DOCS.find(d => d.id === id);
   const tasksOf = (docId, type) => REG.tasks.filter(t => t.source.docId === docId && (t.type || 'mc') === (type || 'mc')).sort((a, b) => a.number - b.number);
-  const gradable = () => C.gradableTasks(REG.tasks);
+  // Training/Statistik: exakt doppelte Aufgaben (dupOf) nur einmal; Fehlerheft/Gemerkte zeigen alles, was man selbst hatte
+  const gradable = () => C.gradableTasks(REG.tasks).filter(t => !t.dupOf);
+  const gradableAll = () => C.gradableTasks(REG.tasks);
+  let DUPS = null;   // behaltene Aufgabe → ihre Doppel
+  const dupsOf = id => { if (!DUPS) { DUPS = {}; REG.tasks.forEach(t => { if (t.dupOf) (DUPS[t.dupOf] = DUPS[t.dupOf] || []).push(t.id); }); } return DUPS[id] || []; };
+  const seenAny = id => [id, ...dupsOf(id)].some(x => st.srs[x] && st.srs[x].seen);
 
   // Gehostet (nicht lokal): Login Pflicht, Aufgabendaten kommen geschützt aus dem Supabase-Speicher
   const LOCAL = /^(localhost|127\.0\.0\.1|)$/.test(location.hostname) && !/[?&]remote=1/.test(location.search);
@@ -285,12 +290,12 @@
   /* ---------- Alles durcharbeiten: alle unbearbeiteten bzw. alle gemerkten Aufgaben, ohne Anzahl und ohne Zeit ---------- */
   const POOL_NAME = { new: 'Alle unbearbeiteten', marked: 'Alle gemerkten' };
   function poolIds(kind, f) {
-    let ts = gradable();
+    let ts = kind === 'new' ? gradable() : gradableAll();
     if (f.parts.length) ts = ts.filter(t => f.parts.includes(t.part));
     if (f.types.length) ts = ts.filter(t => f.types.includes(t.type || 'mc'));
     if (f.periods.length) ts = ts.filter(t => f.periods.includes(t.period));
     if (f.topics.length) ts = ts.filter(t => f.topics.includes(t.topic));
-    if (kind === 'new') return C.shuffle(ts.filter(t => !(st.srs[t.id] && st.srs[t.id].seen))).map(t => t.id);
+    if (kind === 'new') return C.shuffle(ts.filter(t => !seenAny(t.id))).map(t => t.id);
     return ts.filter(t => isMarked(t.id)).sort((a, b) => st.marked[a.id] - st.marked[b.id]).map(t => t.id);   // gemerkte: älteste zuerst
   }
   function startPool(kind, f) {
@@ -420,7 +425,7 @@
   function session(m, [id]) {
     const s = st.sessions[id]; if (!s) { go('#/training'); return; }
     if (s.pool === 'new') {   // inzwischen woanders bearbeitet → nicht nochmal zeigen
-      let k = 0; while (s.idx < s.items.length && !s.items[s.idx].result && !s.items[s.idx].fresh && st.srs[s.items[s.idx].id] && st.srs[s.items[s.idx].id].seen) { s.items[s.idx].skip = 1; s.idx++; k++; }
+      let k = 0; while (s.idx < s.items.length && !s.items[s.idx].result && !s.items[s.idx].fresh && seenAny(s.items[s.idx].id)) { s.items[s.idx].skip = 1; s.idx++; k++; }
       if (k) { if (s.idx >= s.items.length) s.done = true; S.save(true); }
     }
     if (s.idx >= s.items.length || (s.endsAt && Date.now() > s.endsAt && !s.done)) return sessionEnd(m, s);
@@ -506,9 +511,9 @@
   }
   /* ---------- Fehlerheft: falsch oder nur mit Hinweis gelöste Aufgaben, bis sie zweimal in Folge sofort sitzen ---------- */
   function mistakeLists() {
-    const all = gradable().filter(t => { const e = st.srs[t.id]; return e && (e.wrong + e.hint) > 0; });
+    const all = gradableAll().filter(t => { const e = st.srs[t.id]; return e && (e.wrong + e.hint) > 0; });
     const open = all.filter(t => st.srs[t.id].box < 2 && !isMarked(t.id)).sort((a, b) => (st.srs[b.id].wrong - st.srs[a.id].wrong) || (st.srs[a.id].last - st.srs[b.id].last));
-    const marked = gradable().filter(t => isMarked(t.id)).sort((a, b) => st.marked[b.id] - st.marked[a.id]);
+    const marked = gradableAll().filter(t => isMarked(t.id)).sort((a, b) => st.marked[b.id] - st.marked[a.id]);
     return { open: marked.concat(open), marked, solved: all.filter(t => st.srs[t.id].box >= 2 && !isMarked(t.id)) };
   }
   function startMistakes(n) {

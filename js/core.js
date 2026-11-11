@@ -56,7 +56,7 @@
    */
   function pickSession(tasks, srs, n, opts) {
     const o = opts || {}; const now = o.now || Date.now(); const r = o.rng || Math.random;
-    let pool = gradableTasks(tasks);
+    let pool = gradableTasks(tasks).filter(t => !t.dupOf);   // exakt doppelte Aufgaben nur einmal
     if (o.parts && o.parts.length) pool = pool.filter(t => o.parts.includes(t.part));
     if (o.types && o.types.length) pool = pool.filter(t => o.types.includes(t.type || 'mc'));
     if (o.periods && o.periods.length) pool = pool.filter(t => o.periods.includes(t.period));
