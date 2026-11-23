@@ -121,11 +121,11 @@
     return applied;
   }
   function merged(local, remote) {
-    const before = JSON.stringify(local);
+    const before = JSON.stringify(slim(local));
     const r = AP2Core.migrate(remote), hasInk = r.ink && Object.keys(r.ink).length;
     const m = AP2Core.mergeStates(local, r);
     if (!hasInk) { m.ink = local.ink || {}; m.anno = local.anno || {}; m.inkArchive = local.inkArchive || {}; m.inkAt = local.inkAt || {}; }   // Rechenpapier kommt getrennt
-    if (JSON.stringify(Object.assign({}, m, { updatedAt: 0 })) !== JSON.stringify(Object.assign(JSON.parse(before), { updatedAt: 0 }))) { if (!DIFF) AP2Store.backup('vor-zusammenfuehrung'); DIFF = true; }
+    if (JSON.stringify(Object.assign(slim(m), { updatedAt: 0 })) !== JSON.stringify(Object.assign(JSON.parse(before), { updatedAt: 0 })) || (hasInk && JSON.stringify(m.ink) !== JSON.stringify(local.ink))) { if (!DIFF) AP2Store.backup('vor-zusammenfuehrung'); DIFF = true; }
     return m;
   }
   function schedule() { if (!session) return; clearTimeout(timer); timer = setTimeout(() => { timer = null; syncNow(); }, 20000); }
