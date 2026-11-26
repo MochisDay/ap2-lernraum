@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 46;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 47;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -168,7 +168,7 @@
     document.body.classList.toggle('focus', ['exam', 'review', 'session', 'duel', 'bexam', 'bcorr'].includes(name));
     $$('#nav a').forEach(a => { if ((name === 'set' && a.dataset.r === 'exams') || (name === 'learn' && a.dataset.r === 'training')) a.classList.add('on'); });
     const m = $('#main');
-    const views = { '': home, home, learn: learnView, mistakes, set: setView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
+    const views = { '': home, home, learn: learnView, mistakes, set: setView, results: resultsView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
     (views[name] || home)(m, rest.map(decodeURIComponent));
     hydrate(m);
     m.scrollTop = 0; m.focus({ preventScroll: true });
@@ -680,6 +680,7 @@
   function exams(m) {
     m.innerHTML = `<header class="page-h"><h1>Originalprüfungen</h1><p>Teil A und WiSo (gebundene Aufgaben) in Originalreihenfolge. <b>Übung</b>: pausierbar, Lösungen nach Abgabe. <b>Simulation</b>: Timer läuft weiter (auch nach Neustart), keine Hilfen, Auto-Abgabe bei Zeitablauf.</p>
       <p class="muted small">Offizielle Zeit laut Deckblatt: Systementwurf und FuSA je 105 min für Teil A <i>und</i> B zusammen, WiSo 60 min inkl. ungebundener Aufgaben. Für Teil A allein ist keine offizielle Zeit angegeben – die vorgeschlagene Zeit ist änderbar.</p></header>
+      ${(() => { const n = Object.values(st.sets || {}).filter(x => x.areas.some(a => a.done)).length; return n ? `<a class="card res-link" href="#/results"><div><h2>Meine Ergebnisse</h2><span class="muted">${n} komplette Prüfung${n === 1 ? '' : 'en'} – Noten, Zeiten und Verlauf auf einen Blick</span></div><svg class="ic"><use href="#i-right"/></svg></a>` : ''; })()}
       <section class="card set-start"><h2>Komplette Prüfung</h2><p class="muted">Alle drei Bereiche eines Termins wie am Prüfungstag: Teil A, abgeben, dann Teil B auf derselben Uhr. Danach Pause oder direkt weiter.</p>
         <div class="actions wrap"><button class="btn primary" id="setRnd">${ic('dice')} Zufälliger Termin</button></div>
         <details class="fold"><summary><span>Termin auswählen</span><span class="fold-v">${fullPeriods().length} Termine</span><svg class="ic"><use href="#i-right"/></svg></summary><div class="chips">${fullPeriods().map(p => `<button class="chip" data-set="${p}">${esc(periodLabel(p))}</button>`).join('')}</div></details></section>
@@ -780,6 +781,48 @@
     return { a, b, bOpen, total };
   }
   // Gesamtergebnis nach IHK (§ 27 IndElAusbV) – mit Rechenweg, Anteilen und Bestehensregeln; vorläufig, solange Bereiche fehlen
+  /* ---------- Übersicht aller kompletten Prüfungen: Noten, Zeiten, Trend ---------- */
+  function setSummary(set) {
+    const res = AREAS.map((A, i) => setAreaPct(set, i)), W = [20, 20, 10];
+    const dur = (x) => x && x.started && x.submitted ? Math.max(0, x.submitted - x.started) : null;
+    const areas = AREAS.map((A, i) => { const ar = set.areas[i], ea = ar.a && st.exams[ar.a], eb = ar.b && (st.bexams || {})[ar.b];
+      const tA = dur(ea), tB = dur(eb); return { ...res[i], done: !!ar.done, started: !!ar.started, tA, tB, t: tA == null && tB == null ? null : (tA || 0) + (tB || 0) }; });
+    const have = areas.map(a => a.total != null);
+    const sw = W.reduce((q, w, i) => q + (have[i] ? w : 0), 0);
+    const written = sw ? W.reduce((q, w, i) => q + (have[i] ? w * areas[i].total : 0), 0) / sw : null;
+    const full = have.every(Boolean);
+    const pass = full ? C.finalResult({ se: areas[0].total, fusa: areas[1].total, wiso: areas[2].total }).writtenPass : null;
+    const t = areas.reduce((q, a) => q + (a.t || 0), 0);
+    return { areas, written: written == null ? null : Math.round(written * 10) / 10, full, pass, t, doneN: areas.filter(a => a.done).length, bOpen: areas.some(a => a.bOpen) };
+  }
+  const hm = ms => { if (ms == null) return '–'; const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`; };
+  function resultsView(m) {
+    const sets = Object.values(st.sets || {}).filter(x => x.areas.some(a => a.done)).sort((a, b) => (b.created || 0) - (a.created || 0));
+    const nf = x => x == null ? '–' : (Math.round(x * 10) / 10).toLocaleString('de-DE');
+    const grade = p => p == null ? '' : `Note ${C.ihkGrade(p).note}`;
+    const S = sets.map(x => ({ set: x, s: setSummary(x) }));
+    const fin = S.filter(x => x.s.full);
+    const avg = arr => arr.length ? arr.reduce((q, v) => q + v, 0) / arr.length : null;
+    const areaAvg = i => avg(S.map(x => x.s.areas[i].total).filter(v => v != null));
+    const best = fin.length ? Math.max(...fin.map(x => x.s.written)) : null;
+    const tiles = `<section class="kpis">
+      ${kpi('Abgeschlossen', `${fin.length}<small>/${S.length}</small>`, 'komplette Sätze (alle 3 Bereiche korrigiert)')}
+      ${kpi('Ø schriftlich', fin.length ? nf(avg(fin.map(x => x.s.written))) + '<small> P</small>' : '–', fin.length ? grade(avg(fin.map(x => x.s.written))) : 'noch kein Satz fertig')}
+      ${kpi('Bestes Ergebnis', best == null ? '–' : nf(best) + '<small> P</small>', best == null ? '' : grade(best))}
+      ${kpi('Ø Zeit je Satz', fin.length ? hm(avg(fin.map(x => x.s.t))) : '–', 'Start bis Abgabe, ohne Pausen zwischen den Bereichen')}</section>
+      <section class="card"><h2>Ø je Bereich</h2><div class="avg-g">${AREAS.map((A, i) => { const v = areaAvg(i); return `<div><span class="muted small">${A.label}</span><b>${nf(v)}<small> P</small></b><span class="small">${grade(v)}</span><div class="mbar"><i style="width:${v || 0}%"></i><u style="left:50%"></u></div></div>`; }).join('')}</div>
+      <p class="muted small">Strich = 50 Punkte (ausreichend). Teil A und B je ${st.settings.gradeA == null ? 50 : st.settings.gradeA} : ${100 - (st.settings.gradeA == null ? 50 : st.settings.gradeA)} verrechnet.</p></section>`;
+    const trend = fin.length > 1 ? `<section class="card"><h2>Verlauf schriftlich</h2><div class="trend">${fin.slice().reverse().map(x => `<a href="#/set/${x.set.id}" class="tb" title="${esc(periodLabel(x.set.period))}"><span>${nf(x.s.written)}</span><i class="${x.s.pass ? 'ok' : 'no'}" style="height:${Math.max(4, x.s.written)}%"></i><em>${esc(x.set.period)}</em></a>`).join('')}</div></section>` : '';
+    const card = ({ set, s }) => `<section class="card res-set"><div class="rs-h"><div><h2>${esc(periodLabel(set.period))}</h2><span class="muted small">${new Date(set.created).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${set.strict ? 'mit offizieller Zeit' : 'ohne Zeitlimit'} · ${hm(s.t)} gesamt</span></div>
+        ${s.full ? `<span class="pill ${s.pass ? 'ok' : 'bad'}">${s.pass ? ic('check') + ' bestanden' : ic('warn') + ' nicht bestanden'}</span>` : `<span class="pill warn">${s.doneN < 3 ? `${s.doneN} von 3 Bereichen` : 'Teil B korrigieren'}</span>`}</div>
+      <table class="tbl rs-t"><thead><tr><th>Bereich</th><th>Teil A</th><th>Teil B</th><th>Gesamt</th><th>Zeit A / B</th></tr></thead><tbody>
+      ${AREAS.map((A, i) => { const a = s.areas[i]; return `<tr class="${a.done ? '' : 'open'}"><td>${A.label}</td><td>${a.a == null ? '–' : nf(a.a) + ' %'}</td><td>${a.b == null ? (a.bOpen ? '<span class="muted">korrigieren</span>' : '–') : nf(a.b) + ' %'}</td><td>${a.total == null || (a.b == null && a.bOpen) ? '–' : `<b>${nf(a.total)} P</b> · ${grade(a.total)}`}</td><td>${a.done ? `${hm(a.tA)} / ${hm(a.tB)}` : '–'}</td></tr>`; }).join('')}
+      <tr class="sum"><td>Schriftlich${s.full ? '' : ' (vorläufig)'}</td><td></td><td></td><td>${s.written == null ? '–' : `<b>${nf(s.written)} P</b> · ${grade(s.written)}`}</td><td>${hm(s.t)}</td></tr></tbody></table>
+      <div class="actions"><a class="btn sm" href="#/set/${set.id}">Details und Rechenweg</a></div></section>`;
+    m.innerHTML = `<header class="page-h"><a class="link" href="#/exams">← Prüfungen</a><h1>Meine Ergebnisse</h1><p>Alle kompletten Prüfungen auf einen Blick – Punkte und Noten nach IHK-Schlüssel, Bearbeitungszeit je Teil.</p></header>
+      ${S.length ? tiles + trend + S.map(card).join('') : '<section class="card"><p>Noch keine komplette Prüfung gemacht. Unter <a href="#/exams">Prüfungen</a> → „Komplette Prüfung“ startest du einen Satz.</p></section>'}
+      <p class="muted small">Zeit = vom Start bis zur Abgabe des jeweiligen Teils. Pausen innerhalb eines Teils (App verlassen) zählen mit, Pausen zwischen den Bereichen nicht.</p>`;
+  }
   function gradeCard(set) {
     const res = AREAS.map((A, i) => setAreaPct(set, i));
     const W = [20, 20, 10], wA = (st.settings.gradeA == null ? 50 : st.settings.gradeA);

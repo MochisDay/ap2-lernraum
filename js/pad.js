@@ -45,7 +45,7 @@
       <div class="pad-bar">
         <div class="seg">${COLORS.map((c, i) => `<button class="sw${i ? '' : ' on'}" data-c="${c}" style="--c:${c}" aria-label="Farbe ${i + 1}"></button>`).join('')}</div>
         <div class="seg"><button data-w="1.4">fein</button><button data-w="2.2" class="on">mittel</button><button data-w="4">dick</button></div>
-        <div class="seg"><button data-t="pen" class="on">✎ Stift</button><button data-t="marker">Marker</button><button data-t="erase">Radierer</button><button data-t="lasso">Lasso</button></div>
+        <div class="seg"><button data-t="pen" class="on">✎ Stift</button><button data-t="line" title="Gerade Linie (rastet waagerecht/senkrecht ein)">╱ Linie</button><button data-t="marker">Marker</button><button data-t="erase">Radierer</button><button data-t="lasso">Lasso</button></div>
         <div class="seg"><button data-a="undo" title="Rückgängig (2-Finger-Tipp)">↶</button><button data-a="redo" title="Wiederholen (3-Finger-Tipp)">↷</button></div>
         <div class="seg"><button data-a="zout">−</button><button data-a="fit" class="zl" title="Auf Breite">100 %</button><button data-a="zin">+</button></div>
         <div class="seg"><button data-a="add">+ Seite</button><button data-a="clear">Seite leeren</button></div>
@@ -53,7 +53,7 @@
         <span class="pgno"></span>
       </div>
       <div class="pad-wrap"><canvas class="base"></canvas><canvas class="live"></canvas><canvas class="tip"></canvas>
-        <div class="pad-hint">Stift schreibt · Handballen darf aufliegen · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig · am Strichende halten = gerade Linie</div></div>`;
+        <div class="pad-hint">Stift schreibt · Handballen darf aufliegen · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig · gerade Linie: Werkzeug „Linie“ oder am Strichende kurz halten</div></div>`;
     const wrap = host.querySelector('.pad-wrap');
     const cv = host.querySelector('canvas.base'), lv = host.querySelector('canvas.live');
     const tv = host.querySelector('canvas.tip'); tv.style.pointerEvents = 'none';
@@ -92,7 +92,7 @@
       for (let i = 1; i < p.length - 1; i++) {
         const a = p[i - 1], b = p[i], n = p[i + 1];
         const m1 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m2 = [(b[0] + n[0]) / 2, (b[1] + n[1]) / 2];
-        c.lineWidth = s.w * (.55 + (b[2] || .5) * .9);
+        c.lineWidth = s.w * (.65 + (b[2] || .5) * .7);
         c.beginPath(); c.moveTo(i === 1 ? a[0] : m1[0], (i === 1 ? a[1] : m1[1]) + dy); c.quadraticCurveTo(b[0], b[1] + dy, m2[0], m2[1] + dy);
         if (i === p.length - 2) c.lineTo(n[0], n[1] + dy);
         c.stroke();
@@ -131,10 +131,11 @@
     function clearLive() { lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, lv.width, lv.height); clearTip(); }
     function saveView() { try { localStorage.setItem('ap2.padView', JSON.stringify({ z: Z })); } catch (_) {} }
 
-    const snap = () => JSON.stringify(pages);
+    // Schnappschuss ohne Kopie der Punkte: Striche werden nie verändert, nur ersetzt (Verschieben kopiert vorher)
+    const snap = () => pages.map(p => p.slice());
     function commit(before) { undo.push(before); if (undo.length > 60) undo.shift(); redo.length = 0; o.onChange(pages); }
-    function doUndo() { if (!undo.length) return; redo.push(snap()); pages = JSON.parse(undo.pop()); sel = null; o.onChange(pages); clampView(); schedule(); }
-    function doRedo() { if (!redo.length) return; undo.push(snap()); pages = JSON.parse(redo.pop()); sel = null; o.onChange(pages); clampView(); schedule(); }
+    function doUndo() { if (!undo.length) return; redo.push(snap()); pages = undo.pop(); sel = null; o.onChange(pages); clampView(); schedule(); }
+    function doRedo() { if (!redo.length) return; undo.push(snap()); pages = redo.pop(); sel = null; o.onChange(pages); clampView(); schedule(); }
 
     /* ---------- Stift ---------- */
     let cur = null, holdT = 0;
@@ -151,7 +152,7 @@
       const p = s.p, a = p[i - 1], b = p[i], n = p[i + 1];
       const m1 = i === 1 ? a : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m2 = n ? [(b[0] + n[0]) / 2, (b[1] + n[1]) / 2] : b;
       c.strokeStyle = s.c; c.lineCap = 'round'; c.lineJoin = 'round'; c.globalAlpha = 1;
-      c.lineWidth = s.w * (.55 + (b[2] || .5) * .9);
+      c.lineWidth = s.w * (.65 + (b[2] || .5) * .7);
       c.beginPath(); c.moveTo(m1[0], m1[1] + dy); c.quadraticCurveTo(b[0], b[1] + dy, m2[0], m2[1] + dy); c.stroke();
     }
     function drawLiveInc() {
@@ -162,7 +163,7 @@
       // offenes Strichende (und ggf. Vorhersage) auf eigener Ebene – wird bei jedem Ereignis ersetzt
       clearTip(); if (p.length < 2 && !pred.length) return; view(tctx);
       const l = p[p.length - 1], b = p.length > 1 ? p[p.length - 2] : l, m = p.length > 2 ? [(b[0] + l[0]) / 2, (b[1] + l[1]) / 2] : b;
-      tctx.strokeStyle = cur.s.c; tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.lineWidth = cur.s.w * (.55 + (l[2] || .5) * .9);
+      tctx.strokeStyle = cur.s.c; tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.lineWidth = cur.s.w * (.65 + (l[2] || .5) * .7);
       tctx.beginPath(); tctx.moveTo(m[0], m[1] + top); tctx.lineTo(l[0], l[1] + top); pred.forEach(q => tctx.lineTo(q[0], q[1] + top)); tctx.stroke();
     }
     let pred = [];
@@ -185,22 +186,25 @@
         sel = null; cur = { mode: 'lasso', pg, p: [[x, y]] }; schedule(); return;
       }
       if (sel) { sel = null; schedule(); }
-      cur = { mode: 'draw', pg, before, s: { t: tool, c: color, w: width, p: [[x, y, pr]] } };
+      const line = tool === 'line';
+      cur = { mode: 'draw', pg, before, straight: line, line, anchor: [x, y], s: { t: line ? 'pen' : tool, c: color, w: width, p: [[x, y, (pr + .5) / 2]] } };
       drawLive();
     });
     lv.addEventListener('pointermove', e => {
       if (!cur || !isDraw(e)) return; e.preventDefault();
       const ce = e.getCoalescedEvents ? e.getCoalescedEvents() : []; const evs = ce.length ? ce : [e];
       if (cur.mode === 'erase') { for (const ev of evs) { const [x, y] = local(ev); if (eraseAt(x, y, cur.pg)) cur.changed = true; } return; }
-      if (cur.mode === 'move') { const [x, y] = local(e); const dx = x - cur.last[0], dy = y - cur.last[1]; cur.last = [x, y]; sel.idx.forEach(k => pages[cur.pg][k].p.forEach(q => { q[0] += dx; q[1] += dy; })); sel.box = bbox(cur.pg, sel.idx); cur.moved = true; schedule(); return; }
+      if (cur.mode === 'move') { if (!cur.moved) sel.idx.forEach(k => { const o_ = pages[cur.pg][k]; pages[cur.pg][k] = Object.assign({}, o_, { p: o_.p.map(q => q.slice()) }); }); const [x, y] = local(e); const dx = x - cur.last[0], dy = y - cur.last[1]; cur.last = [x, y]; sel.idx.forEach(k => pages[cur.pg][k].p.forEach(q => { q[0] += dx; q[1] += dy; })); sel.box = bbox(cur.pg, sel.idx); cur.moved = true; schedule(); return; }
       if (cur.mode === 'lasso') { for (const ev of evs) { const [x, y] = local(ev); cur.p.push([x, y]); } drawLive(); return; }
-      if (cur.straight) { const [x, y, pr] = local(e); cur.s.p = [cur.s.p[0], [x, y, pr]]; drawLive(); return; }
-      let moved = false;
-      for (const ev of evs) { const [x, y, pr] = local(ev); const l = cur.s.p[cur.s.p.length - 1]; if (Math.hypot(x - l[0], y - l[1]) > .4 / Z) { cur.s.p.push([x, y, pr]); moved = true; } }
-      if (moved) { clearTimeout(holdT); holdT = setTimeout(straighten, 550); }
+      if (cur.straight) { let [x, y] = local(e); const a = cur.s.p[0], dx = x - a[0], dy = y - a[1];
+        if (Math.hypot(dx, dy) > 12) { const ang = Math.abs(Math.atan2(dy, dx)) * 180 / Math.PI; if (ang < 5 || ang > 175) y = a[1]; else if (Math.abs(ang - 90) < 5) x = a[0]; }   // waagerecht/senkrecht einrasten
+        cur.s.p = [[a[0], a[1], .5], [x, y, .5]]; drawLive(); return; }
+      for (const ev of evs) { const [x, y, pr] = local(ev); const l = cur.s.p[cur.s.p.length - 1]; if (Math.hypot(x - l[0], y - l[1]) > .4 / Z) cur.s.p.push([x, y, l[2] * .65 + pr * .35]); }   // Druck geglättet
+      // „Halten“ = Stift bleibt 350 ms innerhalb weniger Pixel (kleines Zittern setzt die Uhr nicht mehr zurück)
+      { const l = cur.s.p[cur.s.p.length - 1]; if (!holdT || Math.hypot(l[0] - cur.anchor[0], l[1] - cur.anchor[1]) > 5 / Z) { cur.anchor = [l[0], l[1]]; clearTimeout(holdT); holdT = setTimeout(straighten, 350); } }
       // Apple Pencil: vorhergesagte Punkte nur vorläufig mitzeichnen (fühlt sich direkter an)
       const pe = e.getPredictedEvents ? e.getPredictedEvents() : [];
-      pred = pe.length && cur.s.t !== 'marker' ? pe.slice(-2).map(local) : [];
+      pred = pe.length && cur.s.t !== 'marker' ? pe.slice(0, 1).map(local) : [];
       drawLiveInc();
     });
     function straighten() {
@@ -210,11 +214,16 @@
       // nur wenn der Strich schon fast gerade war (Schrift wird nie begradigt)
       const dev = Math.max(...p.map(q => Math.abs((b[0] - a[0]) * (a[1] - q[1]) - (a[0] - q[0]) * (b[1] - a[1])) / L));
       if (dev > Math.max(8, L * .12)) return;
-      cur.straight = true; cur.s.p = [a, b]; drawLive();
+      cur.straight = true; cur.s.p = [a, b]; pred = []; drawLive();
     }
     const finish = () => {
-      clearTimeout(holdT); if (!cur) return;
-      if (cur.mode === 'draw') { if (cur.straight) cur.s.p = cur.s.p.map(q => [q[0], q[1], .5]); pages[cur.pg].push(cur.s); commit(cur.before); }
+      clearTimeout(holdT); holdT = 0; if (!cur) return;
+      if (cur.mode === 'draw') {
+        if (cur.straight) cur.s.p = cur.s.p.map(q => [q[0], q[1], .5]);
+        pages[cur.pg].push(cur.s); commit(cur.before);
+        // nur den neuen Strich auf die Grundebene malen statt die ganze Seite neu (flüssiger bei vollen Seiten)
+        if (!sel) { view(ctx); strokePath(ctx, cur.s, pageTop(cur.pg)); cur = null; pred = []; clearLive(); return; }
+      }
       else if (cur.mode === 'erase' && cur.changed) commit(cur.before);
       else if (cur.mode === 'move' && cur.moved) commit(cur.before);
       else if (cur.mode === 'lasso' && cur.p.length > 3) {
@@ -294,9 +303,9 @@
     bar.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       const on = () => { b.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); };
-      if (b.dataset.c) { color = b.dataset.c; on(); if (tool !== 'pen' && tool !== 'marker') { tool = 'pen'; bar.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === 'pen')); } }
+      if (b.dataset.c) { color = b.dataset.c; on(); if (tool !== 'pen' && tool !== 'marker' && tool !== 'line') { tool = 'pen'; bar.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === 'pen')); } }
       else if (b.dataset.w) { width = +b.dataset.w; on(); }
-      else if (b.dataset.t) { tool = b.dataset.t; on(); if (tool !== 'lasso') { sel = null; schedule(); } }
+      else if (b.dataset.t) { tool = b.dataset.t; on(); lv.style.cursor = ''; if (tool !== 'lasso') { sel = null; schedule(); } }
       else if (b.dataset.a === 'undo') doUndo();
       else if (b.dataset.a === 'redo') doRedo();
       else if (b.dataset.a === 'zin') zoomBy(1.25);

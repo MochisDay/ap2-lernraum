@@ -640,3 +640,19 @@ h1{hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
 .cleg{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#8a8f98);font-variant-numeric:tabular-nums}
 .cleg span{display:inline-flex;align-items:center;gap:5px} .cleg i{width:10px;height:10px;border-radius:3px;display:inline-block}
 .cleg .c0{background:#f67e06}.cleg .c1{background:#3b82f6}.cleg .c2{background:#8b5cf6}.cleg .c3{background:#42a230}.cleg .c4{background:#64748b}
+/* Meine Ergebnisse: Übersicht aller kompletten Prüfungen */
+.pill.bad{background:var(--badBg);color:var(--bad)}
+.res-link{display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit}
+.res-link h2{margin:0 0 2px} .res-link .ic{width:22px;height:22px;flex:0 0 auto}
+.avg-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.avg-g>div{display:flex;flex-direction:column;gap:2px} .avg-g b{font-size:24px;font-variant-numeric:tabular-nums} .avg-g b small{font-size:13px;font-weight:600}
+.mbar{position:relative;height:8px;border-radius:9px;background:var(--line2);margin-top:6px}
+.mbar i{display:block;height:100%;border-radius:9px;background:var(--gm,#42a230)} .mbar u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.trend{position:relative;display:flex;align-items:flex-end;gap:8px;height:170px;padding-top:18px;overflow-x:auto}
+.trend .tb{flex:1 0 34px;max-width:64px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;text-decoration:none;color:inherit;font-size:11px;font-variant-numeric:tabular-nums}
+.trend .tb i{display:block;width:100%;border-radius:5px 5px 0 0;background:var(--gm,#42a230)} .trend .tb i.no{background:var(--bad)}
+.trend .tb em{font-style:normal;color:var(--muted,#8a8f98);margin-top:3px;height:14px} .trend .tb span{font-weight:700}
+.trend>u{position:absolute;left:0;right:0;height:0;border-top:2px dashed var(--line2);margin-bottom:17px}
+.res-set .rs-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px} .res-set h2{margin:0}
+.rs-t td,.rs-t th{white-space:nowrap} .rs-t tr.sum td{font-weight:700;border-top:2px solid var(--line2)} .rs-t tr.open td{opacity:.6}
+@media (max-width:600px){ .rs-t{font-size:12px} .rs-t th:nth-child(5),.rs-t td:nth-child(5){display:none} .rs-t td,.rs-t th{padding-left:4px!important;padding-right:4px!important} .rs-t td:first-child{white-space:normal} }
