@@ -227,6 +227,7 @@
     profiles: () => api('/rest/v1/profiles?select=email,display_name,role,created_at&order=created_at'),
     reports: () => api('/rest/v1/task_reports?select=id,task_id,task_version,text,status,admin_note,created_at,user_id&order=created_at.desc'),
     users: () => aiCall('admin-users', { action: 'list' }),
+    scare: id => api('/rest/v1/rpc/admin_scare', { method: 'POST', body: { p_user: id } }),
     locks: () => api('/rest/v1/rpc/admin_locks2', { method: 'POST', body: {} }),
     setLock: (id, minutes, onOpen, sound) => api('/rest/v1/rpc/admin_set_lock2', { method: 'POST', body: { p_user: id, p_minutes: minutes, p_on_open: onOpen, p_sound: !!sound } }),
     deleteUser: (id, revoke) => aiCall('admin-users', { action: 'delete', id, revoke }),
@@ -250,7 +251,7 @@
     window.addEventListener('offline', () => setStatus('offline'));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' || timer) { clearTimeout(timer); timer = null; syncNow(); } });
     if (session && session.user) { loadProfile().catch(() => {}); syncNow(); }
-    checkLock(); setInterval(() => syncNow(), 120000); setInterval(checkLock, 300000);
+    checkLock(); setInterval(() => syncNow(), 120000); setInterval(() => { if (document.visibilityState === 'visible') checkLock(); }, 30000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkLock(); });
   }
 
@@ -258,8 +259,20 @@
   const LK = 'ap2.claude.lockUntil'; let lockEl = null, lockTick = 0;
   async function checkLock() {
     let c = get(LK) || {}; if (typeof c === 'number') c = { until: c };
-    if (session && navigator.onLine) { try { const r = await api('/rest/v1/rpc/my_lock2', { method: 'POST', body: {} }); c = r ? { until: Date.parse(r.until), sound: !!r.sound } : {}; set(LK, c); } catch (_) {} }
+    if (session && navigator.onLine) { try { const r = await api('/rest/v1/rpc/my_flags', { method: 'POST', body: {} }); c = r && r.until ? { until: Date.parse(r.until), sound: !!r.sound } : {}; set(LK, c); if (r && r.scare) scare(); } catch (_) {} }
     if (c.until > Date.now()) showLock(c.until, c.sound); else hideLock();
+  }
+  // Einmaliger Schreck (vom Admin ausgelöst): Bild 5 Sekunden im Vollbild, mit Ton
+  function scare() {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none';
+    el.innerHTML = '<img alt="" style="width:100%;height:100%;object-fit:cover;animation:scarein .18s cubic-bezier(.2,1.6,.4,1) both"><style>@keyframes scarein{from{transform:scale(.2);opacity:0}}</style>';
+    const a = new Audio(); a.loop = true; a.volume = 1;
+    Promise.all([fetchData('data/img/lock.webp', true), fetchData('data/img/lock.mp3', true).catch(() => null)]).then(([img, snd]) => {
+      el.querySelector('img').src = URL.createObjectURL(img); document.body.appendChild(el);
+      if (snd) { a.src = URL.createObjectURL(new Blob([snd], { type: 'audio/mpeg' })); a.play().catch(() => {}); }
+      setTimeout(() => { a.pause(); el.remove(); }, 5000);
+    }).catch(() => {});
   }
   let lockAudio = null, lockKick = null;
   function stopSound() { if (lockAudio) { lockAudio.pause(); lockAudio = null; } if (lockKick) { ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.removeEventListener(ev, lockKick, true)); lockKick = null; } }

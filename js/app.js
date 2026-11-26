@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 50;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 51;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -1522,10 +1522,11 @@
       box.innerHTML = rows.length ? rows.map(u => { const on = u.locked_until || u.lock_minutes != null;
         return `<div class="resume lock-row"><div class="row"><b>${esc(u.display_name || u.email.split('@')[0])}</b><span class="muted">${esc(u.email)}</span>
           <span class="pill ${on ? 'bad' : 'ok'}">${u.locked_until ? 'gesperrt – noch ' + left(u.locked_until) : u.lock_minutes != null ? 'vorgemerkt: ' + dur(u.lock_minutes) + ' ab dem nächsten Öffnen' : 'frei'}${on && u.lock_sound ? ' · mit Ton' : ''}</span></div>
-          <div class="lock-ctl">${on ? `<button class="btn sm" data-unlock="${u.id}">Freigeben</button>` : `<select class="inp" data-dur>${DUR.map(d => `<option value="${d[0]}"${d[0] === 180 ? ' selected' : ''}>${d[1]}</option>`).join('')}</select>
+          <div class="lock-ctl"><button class="btn sm" data-scare="${u.id}" title="Affe 5 Sekunden im Vollbild, mit Ton">Jumpscare</button>${on ? `<button class="btn sm" data-unlock="${u.id}">Freigeben</button>` : `<select class="inp" data-dur>${DUR.map(d => `<option value="${d[0]}"${d[0] === 180 ? ' selected' : ''}>${d[1]}</option>`).join('')}</select>
             <select class="inp" data-when><option value="1">ab dem nächsten Öffnen</option><option value="0">ab sofort</option></select><label class="tg small"><input type="checkbox" data-snd> mit Ton</label><button class="btn sm danger" data-lock="${u.id}">Sperren</button>`}</div></div>`; }).join('') : '<p class="muted">Keine weiteren Konten.</p>';
       $$('[data-lock]', box).forEach(b => b.onclick = async () => { const r = b.closest('.lock-row'); b.disabled = true;
         try { await AP2Sync.admin.setLock(b.dataset.lock, +$('[data-dur]', r).value, $('[data-when]', r).value === '1', $('[data-snd]', r).checked); AP2Toast('Sperre gesetzt.'); } catch (e) { AP2Toast(e.message); } renderLocks(); });
+      $$('[data-scare]', box).forEach(b => b.onclick = async () => { b.disabled = true; try { await AP2Sync.admin.scare(b.dataset.scare); AP2Toast('Jumpscare ausgelöst – kommt innerhalb von 30 Sekunden, wenn die App offen ist, sonst beim nächsten Öffnen.'); } catch (e) { AP2Toast(e.message); } b.disabled = false; });
       $$('[data-unlock]', box).forEach(b => b.onclick = async () => { b.disabled = true; try { await AP2Sync.admin.setLock(b.dataset.unlock, null, true, false); AP2Toast('Zugang wieder frei.'); } catch (e) { AP2Toast(e.message); } renderLocks(); });
     } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   }
