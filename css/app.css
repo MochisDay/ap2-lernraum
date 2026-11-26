@@ -679,3 +679,5 @@ body.focus #main.enter>*{animation:none}
   .bar.topic .bar-l{grid-column:1} .bar.topic .pct{grid-column:2;grid-row:1;text-align:right} .bar.topic .btn{grid-column:3;grid-row:1;justify-self:end}
   .bar.topic .track{grid-column:1/-1;grid-row:2}
 }
+.lock-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+.lock-row .row{flex:1 1 260px;min-width:0} .lock-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center} .lock-ctl .inp{padding:6px 8px;width:auto}

@@ -227,6 +227,8 @@
     profiles: () => api('/rest/v1/profiles?select=email,display_name,role,created_at&order=created_at'),
     reports: () => api('/rest/v1/task_reports?select=id,task_id,task_version,text,status,admin_note,created_at,user_id&order=created_at.desc'),
     users: () => aiCall('admin-users', { action: 'list' }),
+    locks: () => api('/rest/v1/rpc/admin_locks2', { method: 'POST', body: {} }),
+    setLock: (id, minutes, onOpen, sound) => api('/rest/v1/rpc/admin_set_lock2', { method: 'POST', body: { p_user: id, p_minutes: minutes, p_on_open: onOpen, p_sound: !!sound } }),
     deleteUser: (id, revoke) => aiCall('admin-users', { action: 'delete', id, revoke }),
     revoke: email => aiCall('admin-users', { action: 'revoke', email }),
     setReport: (id, status, note) => api('/rest/v1/task_reports?id=eq.' + id, { method: 'PATCH', body: { status, admin_note: note || null }, headers: { Prefer: 'return=minimal' } })
@@ -255,12 +257,22 @@
   /* Zugang vorübergehend gesperrt (vom Admin gesetzt): Vollbild mit Bild und Countdown. Die Sperre startet beim ersten Öffnen. */
   const LK = 'ap2.claude.lockUntil'; let lockEl = null, lockTick = 0;
   async function checkLock() {
-    let until = get(LK) || 0;
-    if (session && navigator.onLine) { try { const r = await api('/rest/v1/rpc/my_lock', { method: 'POST', body: {} }); until = r ? Date.parse(r) : 0; set(LK, until); } catch (_) {} }
-    if (until > Date.now()) showLock(until); else hideLock();
+    let c = get(LK) || {}; if (typeof c === 'number') c = { until: c };
+    if (session && navigator.onLine) { try { const r = await api('/rest/v1/rpc/my_lock2', { method: 'POST', body: {} }); c = r ? { until: Date.parse(r.until), sound: !!r.sound } : {}; set(LK, c); } catch (_) {} }
+    if (c.until > Date.now()) showLock(c.until, c.sound); else hideLock();
   }
-  function hideLock() { clearInterval(lockTick); if (lockEl) { lockEl.remove(); lockEl = null; } }
-  function showLock(until) {
+  let lockAudio = null, lockKick = null;
+  function stopSound() { if (lockAudio) { lockAudio.pause(); lockAudio = null; } if (lockKick) { ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.removeEventListener(ev, lockKick, true)); lockKick = null; } }
+  // Ton in Dauerschleife; Browser erlauben Ton erst nach einer Berührung – deshalb zusätzlich beim ersten Tippen starten
+  function startSound() {
+    if (lockAudio) return; lockAudio = new Audio(); lockAudio.loop = true; lockAudio.volume = 1; const a = lockAudio;
+    fetchData('data/img/lock.mp3', true).then(b => { if (lockAudio !== a) return; a.src = URL.createObjectURL(new Blob([b], { type: 'audio/mpeg' })); a.play().catch(() => {}); }).catch(() => {});
+    lockKick = () => { if (lockAudio && lockAudio.paused && lockAudio.src) lockAudio.play().catch(() => {}); };
+    ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, lockKick, true));
+  }
+  function hideLock() { clearInterval(lockTick); stopSound(); if (lockEl) { lockEl.remove(); lockEl = null; } }
+  function showLock(until, sound) {
+    if (sound) startSound(); else stopSound();
     if (!lockEl) {
       lockEl = document.createElement('div');
       lockEl.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0b0c0d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;font-family:inherit;touch-action:none';

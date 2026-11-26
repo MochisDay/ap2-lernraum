@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 49;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 50;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -1500,16 +1500,35 @@
       const [al, pr, rp] = await Promise.all([A.allowed(), A.profiles(), A.reports()]);
       box.innerHTML = `<h2>Administration</h2>
         <h3>Freigegebene E-Mails (${al.length})</h3>${al.map(a => { const reg = pr.find(x => x.email === a.email); return `<div class="resume"><div class="row"><b>${esc(a.email)}</b><span>${esc(a.display_name || '')}</span><span class="muted">${a.role === 'admin' ? 'Admin' : 'Lernende/r'} · ${reg ? 'Konto angelegt' : 'noch nicht registriert'}</span></div>${!reg && a.role !== 'admin' ? `<button class="ib del" data-revoke="${esc(a.email)}" title="Freigabe entfernen" aria-label="Freigabe entfernen"><svg class="ic"><use href="#i-x"/></svg></button>` : ''}</div>`; }).join('')}
+        <h3>Zugang sperren</h3><p class="muted small">Die Person sieht im Vollbild das Sperrbild mit Countdown und kann die App so lange nicht benutzen.</p><div id="lockList"><p class="muted">Wird geladen …</p></div>
         <h3>Konten</h3><div id="accList"><p class="muted">Wird geladen …</p></div>
         <div class="form"><label for="ne">Kollegen freigeben</label><input class="inp" id="ne" type="email" placeholder="E-Mail"><input class="inp" id="nn" placeholder="Name (optional)"><div class="actions"><button class="btn primary" id="na">Freigeben</button></div></div>
         <h3>Fehlermeldungen (${rp.length})</h3>${rp.length ? rp.map(r => `<div class="row"><b>${esc(r.task_id)}</b><span>${esc(r.text)}</span><span class="muted">${new Date(r.created_at).toLocaleDateString('de-DE')}</span><select data-rs="${r.id}">${['offen', 'angenommen', 'abgelehnt', 'erledigt'].map(s => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`).join('') : '<p class="muted">Keine Meldungen.</p>'}`;
-      renderAccounts();
+      renderAccounts(); renderLocks();
       $$('[data-revoke]', box).forEach(b => b.onclick = async () => { if (!(await ask({ title: 'Freigabe entfernen?', text: `${esc(b.dataset.revoke)} kann sich dann nicht mehr registrieren.`, buttons: [['Entfernen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return; try { await AP2Sync.admin.revoke(b.dataset.revoke); AP2Toast('Freigabe entfernt.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } });
       $('#na').onclick = async () => { try { await A.allow($('#ne').value, $('#nn').value); AP2Toast('Freigegeben. Die Person kann jetzt ein Konto anlegen.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } };
       $$('[data-rs]', box).forEach(sel => sel.onchange = async () => { try { await A.setReport(+sel.dataset.rs, sel.value); AP2Toast('Status gespeichert.'); } catch (e) { AP2Toast(e.message); } });
     } catch (e) { box.innerHTML = `<h2>Administration</h2><p class="muted">${esc(e.message)}</p>`; }
   }
 
+  // Admin: Zugang einzelner Personen für eine wählbare Zeit sperren / wieder freigeben
+  async function renderLocks() {
+    const box = $('#lockList'); if (!box) return;
+    const DUR = [[15, '15 Minuten'], [30, '30 Minuten'], [60, '1 Stunde'], [180, '3 Stunden'], [360, '6 Stunden'], [720, '12 Stunden'], [1440, '1 Tag'], [4320, '3 Tage']];
+    const left = t => { const m = Math.max(0, Math.round((Date.parse(t) - Date.now()) / 60000)); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
+    const dur = m => (DUR.find(d => d[0] === m) || [0, m + ' Minuten'])[1];
+    try {
+      const rows = await AP2Sync.admin.locks();
+      box.innerHTML = rows.length ? rows.map(u => { const on = u.locked_until || u.lock_minutes != null;
+        return `<div class="resume lock-row"><div class="row"><b>${esc(u.display_name || u.email.split('@')[0])}</b><span class="muted">${esc(u.email)}</span>
+          <span class="pill ${on ? 'bad' : 'ok'}">${u.locked_until ? 'gesperrt – noch ' + left(u.locked_until) : u.lock_minutes != null ? 'vorgemerkt: ' + dur(u.lock_minutes) + ' ab dem nächsten Öffnen' : 'frei'}${on && u.lock_sound ? ' · mit Ton' : ''}</span></div>
+          <div class="lock-ctl">${on ? `<button class="btn sm" data-unlock="${u.id}">Freigeben</button>` : `<select class="inp" data-dur>${DUR.map(d => `<option value="${d[0]}"${d[0] === 180 ? ' selected' : ''}>${d[1]}</option>`).join('')}</select>
+            <select class="inp" data-when><option value="1">ab dem nächsten Öffnen</option><option value="0">ab sofort</option></select><label class="tg small"><input type="checkbox" data-snd> mit Ton</label><button class="btn sm danger" data-lock="${u.id}">Sperren</button>`}</div></div>`; }).join('') : '<p class="muted">Keine weiteren Konten.</p>';
+      $$('[data-lock]', box).forEach(b => b.onclick = async () => { const r = b.closest('.lock-row'); b.disabled = true;
+        try { await AP2Sync.admin.setLock(b.dataset.lock, +$('[data-dur]', r).value, $('[data-when]', r).value === '1', $('[data-snd]', r).checked); AP2Toast('Sperre gesetzt.'); } catch (e) { AP2Toast(e.message); } renderLocks(); });
+      $$('[data-unlock]', box).forEach(b => b.onclick = async () => { b.disabled = true; try { await AP2Sync.admin.setLock(b.dataset.unlock, null, true, false); AP2Toast('Zugang wieder frei.'); } catch (e) { AP2Toast(e.message); } renderLocks(); });
+    } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  }
   async function renderAccounts() {
     const box = $('#accList'); if (!box) return;
     try {
