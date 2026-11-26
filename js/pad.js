@@ -53,7 +53,7 @@
         <span class="pgno"></span>
       </div>
       <div class="pad-wrap"><canvas class="base"></canvas><canvas class="live"></canvas><canvas class="tip"></canvas>
-        <div class="pad-hint">Stift schreibt · Handballen darf aufliegen · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig · gerade Linie: Werkzeug „Linie“ oder am Strichende kurz halten</div></div>`;
+        <div class="pad-hint">Stift schreibt · 1 Finger verschiebt · 2 Finger zoomen · 2-Finger-Tipp = rückgängig</div></div>`;
     const wrap = host.querySelector('.pad-wrap');
     const cv = host.querySelector('canvas.base'), lv = host.querySelector('canvas.live');
     const tv = host.querySelector('canvas.tip'); tv.style.pointerEvents = 'none';
@@ -318,8 +318,13 @@
     const onKey = e => { if (!(e.ctrlKey || e.metaKey) || e.target.matches('input,textarea')) return; if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); } };
     document.addEventListener('keydown', onKey);
 
-    const hint = host.querySelector('.pad-hint'); setTimeout(() => hint && hint.classList.add('off'), 6000);
-    const ro = new ResizeObserver(resize); ro.observe(wrap); resize();
+    // Hinweis nur die ersten Male zeigen und beim ersten Strich sofort ausblenden (verdeckte sonst das Papier)
+    const hint = host.querySelector('.pad-hint'); let seenN = 0; try { seenN = +localStorage.getItem('ap2.padHint') || 0; localStorage.setItem('ap2.padHint', seenN + 1); } catch (_) {}
+    if (seenN >= 3) hint.remove(); else { setTimeout(() => hint.classList.add('off'), 4500); lv.addEventListener('pointerdown', () => hint.classList.add('off'), { once: true }); }
+    // Werkzeugleiste: Schatten am Rand zeigt, dass man seitlich wischen kann
+    const fade = () => { bar.classList.toggle('more-r', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 4); bar.classList.toggle('more-l', bar.scrollLeft > 4); };
+    bar.addEventListener('scroll', fade, { passive: true }); setTimeout(fade, 50);
+    const ro = new ResizeObserver(() => { resize(); fade(); }); ro.observe(wrap); resize();
     return { destroy() { ro.disconnect(); document.removeEventListener('keydown', onKey); cancelAnimationFrame(inertia); }, get pages() { return pages; } };
   }
   /* Rechenpapier als Bild für die KI: alle beschriebenen Seiten untereinander, auf die Schrift zugeschnitten, weißer Grund.

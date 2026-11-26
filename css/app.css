@@ -656,3 +656,26 @@ h1{hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
 .res-set .rs-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px} .res-set h2{margin:0}
 .rs-t td,.rs-t th{white-space:nowrap} .rs-t tr.sum td{font-weight:700;border-top:2px solid var(--line2)} .rs-t tr.open td{opacity:.6}
 @media (max-width:600px){ .rs-t{font-size:12px} .rs-t th:nth-child(5),.rs-t td:nth-child(5){display:none} .rs-t td,.rs-t th{padding-left:4px!important;padding-right:4px!important} .rs-t td:first-child{white-space:normal} }
+/* ---- Feinschliff ---- */
+#main.enter>*{animation:viewin .28s cubic-bezier(.2,.7,.2,1) both}
+#main.enter>*:nth-child(2){animation-delay:.03s} #main.enter>*:nth-child(3){animation-delay:.06s} #main.enter>*:nth-child(n+4){animation-delay:.09s}
+@keyframes viewin{from{opacity:0;transform:translateY(8px)}}
+body.focus #main.enter>*{animation:none}
+.btn,.chip,.start,.opt,a.row,#nav a{-webkit-tap-highlight-color:transparent}
+.btn:active,.chip:active{transform:scale(.97)} .start:active,a.row:active,.res-link:active{transform:scale(.99)}
+.btn,.chip,.start{transition:transform .12s ease,background-color .15s ease,box-shadow .15s ease,border-color .15s ease}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.learn-t b,.start b,.card h2,.page-h h1{overflow-wrap:anywhere;hyphens:auto}
+.learn-t{min-width:0} .learn-t>div{min-width:0}
+/* Rechenpapier-Hinweis: klein, unten, verdeckt nichts */
+.pad-hint{top:auto;bottom:10px;right:50%;transform:translateX(50%);max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 6px rgba(0,0,0,.12)}
+/* Werkzeugleiste: Verlauf am Rand = hier geht es weiter */
+.pad-bar.more-r{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 34px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 34px),transparent)}
+.pad-bar.more-l{-webkit-mask-image:linear-gradient(270deg,#000 calc(100% - 34px),transparent);mask-image:linear-gradient(270deg,#000 calc(100% - 34px),transparent)}
+.pad-bar.more-l.more-r{-webkit-mask-image:linear-gradient(90deg,transparent,#000 34px,#000 calc(100% - 34px),transparent);mask-image:linear-gradient(90deg,transparent,#000 34px,#000 calc(100% - 34px),transparent)}
+/* Statistik am Handy: eine Zeile je Thema, „Üben“ rechts statt eigener Zeile */
+@media (max-width:600px){
+  .bar.topic{grid-template-columns:minmax(0,1fr) 44px auto;row-gap:6px;align-items:center}
+  .bar.topic .bar-l{grid-column:1} .bar.topic .pct{grid-column:2;grid-row:1;text-align:right} .bar.topic .btn{grid-column:3;grid-row:1;justify-self:end}
+  .bar.topic .track{grid-column:1/-1;grid-row:2}
+}

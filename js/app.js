@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 47;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 48;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -166,11 +166,13 @@
     const [name, ...rest] = h.split('/');
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (name || 'home')));
     document.body.classList.toggle('focus', ['exam', 'review', 'session', 'duel', 'bexam', 'bcorr'].includes(name));
-    $$('#nav a').forEach(a => { if ((name === 'set' && a.dataset.r === 'exams') || (name === 'learn' && a.dataset.r === 'training')) a.classList.add('on'); });
+    $$('#nav a').forEach(a => { if (((name === 'set' || name === 'results') && a.dataset.r === 'exams') || (name === 'learn' && a.dataset.r === 'training')) a.classList.add('on'); });
     const m = $('#main');
     const views = { '': home, home, learn: learnView, mistakes, set: setView, results: resultsView, training, session, exams, exam, result, review, library, doc: docview, stats, settings, task: taskView, duels, duel: duelPlay, duelr: duelResult, bexam, bcorr, bresult };
     (views[name] || home)(m, rest.map(decodeURIComponent));
     hydrate(m);
+    // sanfter Seitenwechsel – nur wenn wirklich die Seite wechselt, nicht bei jedem Neuzeichnen
+    if (route.last !== name) { route.last = name; m.classList.remove('enter'); void m.offsetWidth; m.classList.add('enter'); }
     m.scrollTop = 0; m.focus({ preventScroll: true });
   }
 
