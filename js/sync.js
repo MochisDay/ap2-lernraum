@@ -268,7 +268,7 @@
   function scare() {
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none';
-    el.innerHTML = '<img alt="" style="width:100%;height:100%;object-fit:cover;animation:scarein .18s cubic-bezier(.2,1.6,.4,1) both"><style>@keyframes scarein{from{transform:scale(.2);opacity:0}}</style>';
+    el.innerHTML = '<img alt="" style="width:100%;height:100%;object-fit:contain;animation:scarein .18s cubic-bezier(.2,1.6,.4,1) both"><style>@keyframes scarein{from{transform:scale(.2);opacity:0}}</style>';
     const a = new Audio(); a.loop = true; a.volume = 1;
     // eigenes Bild des Admins, sonst das Standardbild
     const pic = api('/rest/v1/rpc/get_asset', { method: 'POST', body: { p_key: 'scare_img' } }).catch(() => null).then(d => d || fetchData('data/img/lock.webp', true).then(b => URL.createObjectURL(b)));
