@@ -681,3 +681,5 @@ body.focus #main.enter>*{animation:none}
 }
 .lock-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
 .lock-row .row{flex:1 1 260px;min-width:0} .lock-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center} .lock-ctl .inp{padding:6px 8px;width:auto}
+.scare-set{display:flex;gap:14px;align-items:center;margin:12px 0 4px;padding:12px;border-radius:var(--r-md,10px);background:var(--surface2,var(--line2))}
+.scare-set img{width:84px;height:84px;object-fit:cover;border-radius:10px;flex:0 0 auto} .scare-set p{margin:2px 0 8px}

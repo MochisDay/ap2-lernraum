@@ -227,6 +227,8 @@
     profiles: () => api('/rest/v1/profiles?select=email,display_name,role,created_at&order=created_at'),
     reports: () => api('/rest/v1/task_reports?select=id,task_id,task_version,text,status,admin_note,created_at,user_id&order=created_at.desc'),
     users: () => aiCall('admin-users', { action: 'list' }),
+    scareImg: () => api('/rest/v1/rpc/get_asset', { method: 'POST', body: { p_key: 'scare_img' } }),
+    setScareImg: data => api('/rest/v1/rpc/admin_set_asset', { method: 'POST', body: { p_key: 'scare_img', p_data: data } }),
     scare: id => api('/rest/v1/rpc/admin_scare', { method: 'POST', body: { p_user: id } }),
     locks: () => api('/rest/v1/rpc/admin_locks2', { method: 'POST', body: {} }),
     setLock: (id, minutes, onOpen, sound) => api('/rest/v1/rpc/admin_set_lock2', { method: 'POST', body: { p_user: id, p_minutes: minutes, p_on_open: onOpen, p_sound: !!sound } }),
@@ -268,8 +270,10 @@
     el.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none';
     el.innerHTML = '<img alt="" style="width:100%;height:100%;object-fit:cover;animation:scarein .18s cubic-bezier(.2,1.6,.4,1) both"><style>@keyframes scarein{from{transform:scale(.2);opacity:0}}</style>';
     const a = new Audio(); a.loop = true; a.volume = 1;
-    Promise.all([fetchData('data/img/lock.webp', true), fetchData('data/img/lock.mp3', true).catch(() => null)]).then(([img, snd]) => {
-      el.querySelector('img').src = URL.createObjectURL(img); document.body.appendChild(el);
+    // eigenes Bild des Admins, sonst das Standardbild
+    const pic = api('/rest/v1/rpc/get_asset', { method: 'POST', body: { p_key: 'scare_img' } }).catch(() => null).then(d => d || fetchData('data/img/lock.webp', true).then(b => URL.createObjectURL(b)));
+    Promise.all([pic, fetchData('data/img/lock.mp3', true).catch(() => null)]).then(async ([src, snd]) => {
+      const im = el.querySelector('img'); im.src = src; try { await im.decode(); } catch (_) {} document.body.appendChild(el);
       if (snd) { a.src = URL.createObjectURL(new Blob([snd], { type: 'audio/mpeg' })); a.play().catch(() => {}); }
       setTimeout(() => { a.pause(); el.remove(); }, 5000);
     }).catch(() => {});
@@ -299,7 +303,7 @@
   }
 
   const leaderboard = () => rpc('leaderboard');
-  window.AP2Sync = { push, leaderboard, changePassword, ready, init, signIn, signUp, signOut, resetPassword, syncNow, schedule, sendReport, serverBackups, restoreServerBackup, admin, duels, aiGrade, aiTutor, fetchData,
+  window.AP2Sync = { scarePreview: scare, push, leaderboard, changePassword, ready, init, signIn, signUp, signOut, resetPassword, syncNow, schedule, sendReport, serverBackups, restoreServerBackup, admin, duels, aiGrade, aiTutor, fetchData,
     onStatus: f => listeners.push(f), get status() { return status; }, get session() { return session; }, get profile() { return profile; },
     lastSync: () => get('ap2.claude.lastSync') };
 })();

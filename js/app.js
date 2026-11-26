@@ -36,7 +36,7 @@
   }
   window.AP2Ask = ask;
   let SWREG = null;
-  const APPV = 51;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
+  const APPV = 52;   // bei jeder Veröffentlichung zusammen mit sw.js erhöhen
   // Merken: eigene Markierung (z. B. „richtig, aber geraten“) – landet im Fehlerheft, bis man sie wieder entfernt
   // Neues, leeres Rechenpapier und Aufgabenblatt für einen neuen Versuch; das Alte wird archiviert (nicht gelöscht)
   function freshSheet(id) {
@@ -1501,10 +1501,11 @@
       box.innerHTML = `<h2>Administration</h2>
         <h3>Freigegebene E-Mails (${al.length})</h3>${al.map(a => { const reg = pr.find(x => x.email === a.email); return `<div class="resume"><div class="row"><b>${esc(a.email)}</b><span>${esc(a.display_name || '')}</span><span class="muted">${a.role === 'admin' ? 'Admin' : 'Lernende/r'} · ${reg ? 'Konto angelegt' : 'noch nicht registriert'}</span></div>${!reg && a.role !== 'admin' ? `<button class="ib del" data-revoke="${esc(a.email)}" title="Freigabe entfernen" aria-label="Freigabe entfernen"><svg class="ic"><use href="#i-x"/></svg></button>` : ''}</div>`; }).join('')}
         <h3>Zugang sperren</h3><p class="muted small">Die Person sieht im Vollbild das Sperrbild mit Countdown und kann die App so lange nicht benutzen.</p><div id="lockList"><p class="muted">Wird geladen …</p></div>
+        <div class="scare-set"><img id="scImg" alt="" hidden><div><b>Jumpscare-Bild</b><p class="muted small" id="scTxt">Standardbild</p><div class="actions wrap"><label class="btn sm">Eigenes Bild wählen<input type="file" id="scFile" accept="image/*" hidden></label><button class="btn sm ghost" id="scTest">Bei mir testen</button><button class="btn sm ghost" id="scReset">Standard</button></div></div></div>
         <h3>Konten</h3><div id="accList"><p class="muted">Wird geladen …</p></div>
         <div class="form"><label for="ne">Kollegen freigeben</label><input class="inp" id="ne" type="email" placeholder="E-Mail"><input class="inp" id="nn" placeholder="Name (optional)"><div class="actions"><button class="btn primary" id="na">Freigeben</button></div></div>
         <h3>Fehlermeldungen (${rp.length})</h3>${rp.length ? rp.map(r => `<div class="row"><b>${esc(r.task_id)}</b><span>${esc(r.text)}</span><span class="muted">${new Date(r.created_at).toLocaleDateString('de-DE')}</span><select data-rs="${r.id}">${['offen', 'angenommen', 'abgelehnt', 'erledigt'].map(s => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`).join('') : '<p class="muted">Keine Meldungen.</p>'}`;
-      renderAccounts(); renderLocks();
+      renderAccounts(); renderLocks(); renderScareImg();
       $$('[data-revoke]', box).forEach(b => b.onclick = async () => { if (!(await ask({ title: 'Freigabe entfernen?', text: `${esc(b.dataset.revoke)} kann sich dann nicht mehr registrieren.`, buttons: [['Entfernen', true, 'danger'], ['Abbrechen', false, 'ghost']] }))) return; try { await AP2Sync.admin.revoke(b.dataset.revoke); AP2Toast('Freigabe entfernt.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } });
       $('#na').onclick = async () => { try { await A.allow($('#ne').value, $('#nn').value); AP2Toast('Freigegeben. Die Person kann jetzt ein Konto anlegen.'); renderAdmin(); } catch (e) { AP2Toast(e.message); } };
       $$('[data-rs]', box).forEach(sel => sel.onchange = async () => { try { await A.setReport(+sel.dataset.rs, sel.value); AP2Toast('Status gespeichert.'); } catch (e) { AP2Toast(e.message); } });
@@ -1512,6 +1513,17 @@
   }
 
   // Admin: Zugang einzelner Personen für eine wählbare Zeit sperren / wieder freigeben
+  async function renderScareImg() {
+    const im = $('#scImg'); if (!im) return; const A = AP2Sync.admin;
+    const show = d => { im.hidden = !d; if (d) im.src = d; $('#scTxt').textContent = d ? 'Eigenes Bild' : 'Standardbild (Affe)'; };
+    try { show(await A.scareImg()); } catch (_) {}
+    $('#scFile').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+      try { const bmp = await createImageBitmap(f); const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)); const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        let q = .82, d = c.toDataURL('image/jpeg', q); while (d.length > 600000 && q > .4) { q -= .12; d = c.toDataURL('image/jpeg', q); }
+        await A.setScareImg(d); show(d); AP2Toast('Jumpscare-Bild gespeichert.'); } catch (err) { AP2Toast('Bild konnte nicht übernommen werden: ' + err.message); } e.target.value = ''; };
+    $('#scReset').onclick = async () => { try { await A.setScareImg(null); show(null); AP2Toast('Wieder das Standardbild.'); } catch (err) { AP2Toast(err.message); } };
+    $('#scTest').onclick = () => AP2Sync.scarePreview();
+  }
   async function renderLocks() {
     const box = $('#lockList'); if (!box) return;
     const DUR = [[15, '15 Minuten'], [30, '30 Minuten'], [60, '1 Stunde'], [180, '3 Stunden'], [360, '6 Stunden'], [720, '12 Stunden'], [1440, '1 Tag'], [4320, '3 Tage']];
