@@ -41,7 +41,7 @@
     catch (e) { if (e.status === 400 || e.status === 401) { session = null; set(SK, null); setStatus('abgemeldet'); } return false; }
   }
 
-  async function signIn(email, password) { keep(await api('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email: email.trim().toLowerCase(), password } })); await loadProfile(); await syncNow(true); }
+  async function signIn(email, password) { keep(await api('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email: email.trim().toLowerCase(), password } })); checkLock(); await loadProfile(); await syncNow(true); }
   async function signUp(email, password) {
     const d = await api('/auth/v1/signup', { method: 'POST', auth: false, body: { email: email.trim().toLowerCase(), password, options: { emailRedirectTo: location.origin + location.pathname } } });
     if (d && d.access_token) { keep(d); await loadProfile(); await syncNow(true); return 'angemeldet'; }
@@ -248,7 +248,29 @@
     window.addEventListener('offline', () => setStatus('offline'));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' || timer) { clearTimeout(timer); timer = null; syncNow(); } });
     if (session && session.user) { loadProfile().catch(() => {}); syncNow(); }
-    setInterval(() => syncNow(), 120000);
+    checkLock(); setInterval(() => syncNow(), 120000); setInterval(checkLock, 300000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkLock(); });
+  }
+
+  /* Zugang vorübergehend gesperrt (vom Admin gesetzt): Vollbild mit Bild und Countdown. Die Sperre startet beim ersten Öffnen. */
+  const LK = 'ap2.claude.lockUntil'; let lockEl = null, lockTick = 0;
+  async function checkLock() {
+    let until = get(LK) || 0;
+    if (session && navigator.onLine) { try { const r = await api('/rest/v1/rpc/my_lock', { method: 'POST', body: {} }); until = r ? Date.parse(r) : 0; set(LK, until); } catch (_) {} }
+    if (until > Date.now()) showLock(until); else hideLock();
+  }
+  function hideLock() { clearInterval(lockTick); if (lockEl) { lockEl.remove(); lockEl = null; } }
+  function showLock(until) {
+    if (!lockEl) {
+      lockEl = document.createElement('div');
+      lockEl.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0b0c0d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;font-family:inherit;touch-action:none';
+      lockEl.innerHTML = '<img alt="" style="max-width:min(80vw,420px);max-height:55vh;border-radius:18px;box-shadow:0 12px 50px rgba(0,0,0,.6)"><div style="font-size:15px;opacity:.75">Zugang gesperrt. Weiter geht es in</div><div data-t style="font-size:54px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px"></div>';
+      document.body.appendChild(lockEl);
+      fetchData('data/img/lock.webp', true).then(b => { if (lockEl) lockEl.querySelector('img').src = URL.createObjectURL(b); }).catch(() => {});
+    }
+    const t = lockEl.querySelector('[data-t]'); clearInterval(lockTick);
+    const upd = () => { const ms = until - Date.now(); if (ms <= 0) { hideLock(); checkLock(); return; } const s = Math.ceil(ms / 1000), p = n => String(n).padStart(2, '0'); t.textContent = p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60); };
+    upd(); lockTick = setInterval(upd, 1000);
   }
 
   const leaderboard = () => rpc('leaderboard');
